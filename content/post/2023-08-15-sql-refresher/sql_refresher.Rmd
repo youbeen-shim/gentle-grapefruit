@@ -1,0 +1,218 @@
+---
+title: "SQL Refresher"
+author: "Youbeen Shim"
+date: "2023-08-15"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## SQL is a funny thing...
+
+All of the SQL I ever picked up was by rummaging around the internet. Luckily, I already had experience with dealing with tabular data in general. I already understood the capabilities of basic functionality such as SELECT, JOIN, WHERE, and GROUP BY. This, plus the random tutorials on the web, sufficed whenever I had to use it for work. Then, time and time again, I found myself searching for the same articles because I never put in the effort to incorporate the knowledge into my brain.
+
+Enter this post. It really isn’t meant to be a guide - it isn’t exhaustive enough. It is just a recap of the more advanced capabilities in SQL that I frequently trip up on. For you, it could be a good cheat sheet to reference to unlock the majority of the data wrangling capabilities of SQL without getting bogged down by the details of what each function can and cannot do. 
+
+The topics covered in this post are:  
+
+*  Order of Operations  
+*  CTEs  
+*  Aggregate Functions  
+*  Partition By  
+*  Ranking Functions  
+
+Topics below are important, but separate and complicated enough on their own that it deserves a separate post.  
+
+*  Date and Time functions  
+*  String manipulation and Regex  
+
+If you don't know any SQL and want a recommendation on where to start. I enjoy the content that the folks at [Mode](https://mode.com/sql-tutorial/) have created. Alternatively, I found the explanation of more complex or niche concepts by [Rajendra Gupta](https://www.sqlshack.com/) at SQLShack  helpful. Even if you know everything there is to know (why are you here?), you might find the style guide published by [GitLab](https://about.gitlab.com/handbook/business-technology/data-team/platform/sql-style-guide/) a helpful reference.
+
+
+## Order of Operations
+
+I know, its dumb, but messing up order of operations happens quite frequently, especially if you are used to the flexibility that the [dplyr (and tidyr)](https://www.rstudio.com/wp-content/uploads/2015/02/data-wrangling-cheatsheet.pdf) or the [pandas and numpy](https://www.kaggle.com/code/lavanyashukla01/pandas-numpy-python-cheatsheet) offer. 
+
+```{r, eval=FALSE}
+SELECT
+    variable1,
+    variable2
+FROM thisTable
+WHERE
+GROUP BY
+HAVING
+ORDER BY
+LIMIT 
+```
+Two things to note:  
+
+1.  I stylistically prefer using a new line for every variable.  
+2.  Using LIMIT in your queries isn’t necessary, but always recommended. This is especially true when you are unsure of the size of the table you are querying, be it ten rows and ten million rows.  
+
+
+## CTEs 
+
+Below is a solution to the problem [#1607](https://leetcode.com/problems/sellers-with-no-sales/) in LC. The goal of the problem was to find sellers who did not make any sales in 2020.
+
+```{r, eval=FALSE}
+WITH sales2020 AS (
+    SELECT 
+        seller_id,
+        COUNT(order_id) AS num_sales
+    FROM Orders
+    WHERE YEAR(sale_date) = '2020'
+    GROUP BY seller_id
+)
+
+SELECT 
+    seller_name
+FROM Seller
+WHERE seller_id NOT IN (SELECT seller_id FROM sales2020)
+ORDER BY seller_name ASC
+```
+I first created a CTE consisting of all the sellers who did make a sale, and then looked for a seller that was not in that table. This query can be much shorter, like below.
+
+```{r, eval=FALSE}
+SELECT
+    s.seller_name
+FROM Seller s
+LEFT JOIN Orders o
+ON s.seller_id = o.seller_id
+AND YEAR(o.sale_date) = '2020' # Filter out non-2020 sales pre-join
+WHERE o.order_id IS NULL
+ORDER BY s.seller_name ASC
+```
+While the code above is more “elegant”, I would have trouble getting to it from scratch, especially if I haven’t been using SQL for a while. 
+
+Common Table Expressions should be your default because:  
+
+*  It helps with readability and maintenance (even if it’s your own code!).  
+  *  Even if you have no problem with your own code, the sheer fact that you will one day collaborate should be enough of a reason to get into the habit of leveraging CTEs.  
+*  Similarly, it helps with debugging and development. Having breaks makes it possible to find what went wrong in a multi-step process.  
+*  It offers modularity and reusability. There have been countless times where I thanked myself for having a CTE that stopped at a certain point, because I ended up needing exactly that table.  
+*  It’s the only way to write recursive queries (which is a bag of worms that I refused to open, but you can dive into it more [here](https://learnsql.com/blog/sql-recursive-cte/)).  
+
+However, I would caution against the following possible problems:  
+
+*  CTEs are generally harder to optimize than a complex query. Of course, it depends on the database system used, but it could lead to suboptimal execution plans.   
+  *  Read up on [Performance Tuning SQL Queries](https://mode.com/sql-tutorial/sql-performance-tuning/) at your own pace.  
+*  Unnecessary complexity. This is subjective, but there is such a thing as too many CTEs, especially for intermediary steps that will not see the light of day afterwards.   
+
+
+## Aggregate Functions
+
+Everyone knows COUNT, SUM, MIN, MAX, and AVG. Most of the time, these are more than enough. If you need more, you can read about them [here](https://dev.mysql.com/doc/refman/8.0/en/aggregate-functions.html) or [here](https://learn.microsoft.com/en-us/sql/t-sql/functions/aggregate-functions-transact-sql?view=sql-server-ver16). Personally, if it goes beyond the five basic functions, I have a preference for using R or Python to handle the rest. 
+
+Below is my solution to problem [#1212](https://leetcode.com/problems/team-scores-in-football-tournament/) in LC. In the query, I used the SUM function together with CASE WHEN statements to calculate the overall scores for each team.
+
+```{r, eval=FALSE}
+SELECT
+    t.team_id,
+    t.team_name,
+    SUM(
+        CASE
+            WHEN t.team_id = m.host_team AND m.host_goals > m.guest_goals THEN 3
+            WHEN t.team_id = m.guest_team AND m.guest_goals > m.host_goals THEN 3
+            WHEN m.guest_goals = m.host_goals THEN 1
+            ELSE 0
+        END
+        ) AS num_points
+FROM Teams t
+LEFT JOIN Matches m
+ON t.team_id = m.host_team OR t.team_id = m.guest_team
+GROUP BY team_id
+ORDER BY num_points DESC, team_id
+```
+
+
+## PARTITION BY
+
+I’ve found that it is easier to appreciate the PARTITION BY clause in comparison to the GROUP BY clause. Question, will this code run?
+
+```{r, eval=FALSE}
+SELECT 
+client_city,
+ client_name,
+order_amount,
+       AVG(order_amount) AS avg_order_amt, 
+       MIN(order_amount) AS min_order_amt, 
+       SUM(order_amount) AS tot_order_amt
+FROM Orders
+GROUP BY client_city
+```
+No - we can use a column in the select statement only if it is used in GROUP BY clause as well. It does not allow any column in the select clause that is not part of GROUP BY clause. PARTITION BY clause gets around this issue, since it allows us to perform calculations across different partitions of data without changing the level of detail in the query's result.
+
+```{r, eval=FALSE}
+SELECT 
+client_city, 
+       client_name, 
+       order_amount, 
+       AVG(order_amount) OVER(PARTITION BY client_city) AS avg_order_amt, 
+       MIN(order_amount) OVER(PARTITION BY client_city) AS min_order_amt, 
+       SUM(order_amount) OVER(PARTITION BY client_city) AS tot_order_amt
+FROM Orders
+```
+It is worth noting that while GROUP BY simplifies the results, PARTITION BY does not. If you started with 21 rows and 3 groups, GROUP BY will result in 3 rows, PARTITION BY will result in the same 21 rows, now with aggregated values as well.
+
+
+## Ranking Functions
+
+I’ve personally found RANK -along with its siblings DENSE_RANK, ROW_NUMBER, and NTILE- more useful in coding challenges than in real life. However, there is no denying their usefulness, especially as a final step in the data pipeline to summarize the results, or more commonly to look at the top results in different segments of the customer population. 
+
+#### ROW_NUMBER()
+```{r, eval=FALSE}
+SELECT
+	customer_id,
+	purchase_date,
+	purchase_quantity,
+	ROW_NUMBER() OVER(ORDER BY purchase_quantity) AS rowNum
+FROM Sales;
+```
+ROW_NUMBER gives a unique sequential number for each row. Typically used as an index in the base form.
+
+It can be used without OVER(), but when combined with it, becomes more powerful. 
+
+Watch out for values that are tied, because it will increment on ties as well.
+
+#### RANK() and DENSE_RANK()
+```{r, eval=FALSE}
+SELECT
+	Student_name,
+	Course_id,
+	Grade,
+RANK() OVER(PARTITION BY student_name ORDER BY grade DESC) AS personal_pref
+FROM coursePerformance
+```
+RANK does exactly what it sounds like. More specifically, it assigns a rank to each row within a result set, based on the values in the column specified by the ORDER BY clause. You can use PARTITION BY to rank within that segment. Above, we rank the courses that a student has taken for each student according to their grade.
+
+RANK gives the same score for ties (unlike ROW_NUMBER), but skips ahead. I.e. 1 2 3 4 4 6
+
+DENSE_RANK does the same, but does not skip ahead. I.e. 1 2 3 4 4 5
+
+#### NTILE()
+
+I commonly run across NTILE when dealing with sub-segments of a population. Conceptually, NTILE creates grouping for individuals based on a continuous variable. You can decide how many groups there should be. For instance, divide the students into four (quartiles) based on their height.
+
+```{r, eval=FALSE}
+SELECT
+	Student_name,
+	Course_id,
+	Grade,
+NTILE(4) OVER(ORDER BY student_height DESC) height_group
+FROM coursePerformance
+```
+
+Things get more interesting when you also take leverage of PARTITION BY clause. This creates NTILES for each group belonging to a variable specified by the PARTITION BY clause. 
+
+```{r, eval=FALSE}
+SELECT
+	Student_name,
+	Course_id,
+	Grade,
+NTILE(4) OVER(PARTITION BY glasses ORDER BY student_height DESC) height_group
+FROM coursePerformance
+```
+This creates quartiles for a group of students wearing glasses and a group of students not wearing glasses based on their height. Now it is easier to match the two different groups of students based on their relative height. 
+
