@@ -1,0 +1,121 @@
+---
+title: "Strings in SQL"
+author: "Youbeen Shim"
+date: "2023-08-22"
+output: html_document
+---
+
+
+
+<div id="string-manipulation-and-regular-expressions" class="section level2">
+<h2>String Manipulation and Regular Expressions</h2>
+<p>The reality is this, the world is messy. Physicists know it too, they always babble on about the second law of thermodynamics or whatever. It’s up to us to create and restore order.</p>
+<p>If everything was perfect in the world, there would be no point to learning these topics. Well, actually, there would be some points, but you get the point.</p>
+<p>Anyways, work remains to be done. I’ll write down some easy examples and make some notes on it that generally covers the use case of that function or concept. Like <a href="">before</a> it won’t be a full explanation, and I’ll point you to the writers with more experience than me go down that rabbit hole with you.</p>
+<p>Topics today:</p>
+<ul>
+<li>Search and Match<br />
+</li>
+<li>Specify and Paste<br />
+</li>
+<li>Trim<br />
+</li>
+<li>Fill in Blanks</li>
+</ul>
+</div>
+<div id="search-and-match" class="section level2">
+<h2>Search and Match</h2>
+<div id="like-vs-regex" class="section level4">
+<h4>LIKE vs REGEX</h4>
+<p>What’s the difference? For one, LIKE is easier. Let’s look at <a href="https://leetcode.com/problems/patients-with-a-condition/">#1527</a>:</p>
+<pre><code>SELECT
+    patient_id,
+    patient_name,
+    conditions
+FROM Patients
+WHERE conditions LIKE &#39;% DIAB1%&#39; 
+OR conditions LIKE &#39;DIAB1%&#39;</code></pre>
+<p>I’m using ‘%’ to search for that specific set of characters at the beginning or the end of a string. It’s also possible to leverage ’_’ to specify the minimum length of a string or the position of a character. For example, the query below find the patients with an ‘r’ in the second character of their name.</p>
+<pre><code>SELECT
+    patient_id,
+    patient_name,
+    conditions
+FROM Patients
+WHERE patient_name LIKE &#39;%_r’</code></pre>
+<p>Regular expressions are more complex and can specify the requirements in greater detail. <a href="https://leetcode.com/problems/find-users-with-valid-e-mails/">#1517</a> captures the essence of the idea.</p>
+<pre><code>SELECT
+    user_id,
+    name,
+    mail
+FROM Users
+WHERE mail REGEXP &#39;^[A-Za-z]+[A-Za-z0-9\_\.\-]*\@leetcode[.]com$&#39;</code></pre>
+<ul>
+<li>^[a-zA-Z]+: The string must start (^[]+) with a letter (A-Za-z)<br />
+</li>
+<li>[a-zA-z0-9_.-]<em>: The string can have zero or more ([]</em>) letter (A-Za-z), number (0-9), or special characters (_ . -)<br />
+</li>
+<li><span class="citation">@leetcode [.]</span>com<span class="math inline">\(: the period (.) must come after @leetcode and end with (\)</span>) com</li>
+</ul>
+<p>Obviously this is not a complete explanation nor a comprehensive list, but you can find something more comprehensive <a href="https://www.rexegg.com/regex-quickstart.html">here</a>.</p>
+<p>As a side note, from my personal experience, LIKE is typically faster when using single conditions, but REGEXP is faster when dealing with more than one condition. This is unverified and I have done no research on it, but it does seem to reflect the <a href="https://stackoverflow.com/questions/16646686/mysql-regexp-vs-like">opinions of the community</a> as well.</p>
+</div>
+</div>
+<div id="specify-and-paste" class="section level2">
+<h2>Specify and Paste</h2>
+<div id="concat" class="section level4">
+<h4>CONCAT()</h4>
+<p>Pastes two+ strings together. Doesn’t necessarily have to start out as a string, but will be forced as a string as it concatenates.</p>
+</div>
+<div id="upper-and-lower" class="section level4">
+<h4>UPPER() and LOWER()</h4>
+<p>Changes the strings within the function to be written in upper or lower case.</p>
+</div>
+<div id="substring-or-substr" class="section level4">
+<h4>SUBSTRING() or SUBSTR()</h4>
+<p>Arguments are SUBSTR(string, start, length). Not choosing the length argument will default to returning the whole string from the start onwards.</p>
+<p><a href="https://leetcode.com/problems/fix-names-in-a-table/">#1667</a></p>
+<pre><code>SELECT
+    user_id, 
+    CONCAT(UPPER(SUBSTRING(name, 1, 1)),LOWER(SUBSTRING(name, 2))) AS name
+FROM Users
+ORDER BY user_id
+
+– LOWER(SUBSTR(name, 2, length(name)-1)) would be equivalent</code></pre>
+<p>It could also be something like this.</p>
+</div>
+<div id="left-and-right" class="section level4">
+<h4>LEFT() AND RIGHT()</h4>
+<p>Returns the number of characters specified starting from the leftmost or the rightmost position. Below we use left and right instead of using substring twice. More for demonstration purposes though.</p>
+<pre><code>SELECT 
+user_id, 
+CONCAT(UPPER(LEFT(name, 1)), LOWER(RIGHT(name, LENGTH(name)-1))) AS name
+FROM Users
+ORDER BY user_id</code></pre>
+</div>
+</div>
+<div id="trim" class="section level2">
+<h2>Trim</h2>
+<div id="trim-1" class="section level4">
+<h4>TRIM()</h4>
+<p>Trims (could not think of any other word that described that action better) any character specified within the quote from the beginning, end, or both.</p>
+<pre><code>Select
+	Name,
+	customer_Id,
+	Address, 
+	TRIM(BOTH ‘[]’ FROM zip_code)
+FROM clientAddress</code></pre>
+</div>
+</div>
+<div id="fill-in-blanks" class="section level2">
+<h2>Fill in Blanks</h2>
+<div id="coalesce" class="section level4">
+<h4>COALESCE()</h4>
+<p>Fills in null values with a value specified.</p>
+<pre><code>Select
+	Name,
+	customer_Id,
+	Address, 
+	COALESCE(marriage_status, ‘No Info’)
+FROM Clients</code></pre>
+</div>
+</div>
