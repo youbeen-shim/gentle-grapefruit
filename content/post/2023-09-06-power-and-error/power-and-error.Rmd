@@ -42,7 +42,7 @@ There is a limit to this method, especially concerning online controlled experim
 ## Recommendations for Small Sample Size Settings
 Inevitably, in the real world, it is common to have small sample sizes relative to the difference we want to measure. This is common in psychology, political science, public health, and, of course, data science. When sample sizes are small, the results may be influence by chance or random variation, making it difficult to determine whether the findings are truly representative of the population being studied. 
 
-Gelman and Carlin (*Beyond Power Calculations: Assessing Type S (Sign) and Type M (Magnitude) Errors*, 2014) argue for the following in their paper.  
+Gelman and Carlin [(*Beyond Power Calculations: Assessing Type S (Sign) and Type M (Magnitude) Errors*, 2014)](http://www.stat.columbia.edu/~gelman/research/published/retropower_final.pdf) argue for the following in their paper.  
 
 1. Using external information to inform estimates of true effect size, such as previous research or expert knowledge. This can help researchers to determine a plausible range of effect sizes and to design studies that are more likely to detect true effects.
 2. Focusing on estimates and uncertainties rather than on statistical significance. Researchers should report effect sizes and confidence intervals, providing a range of plausible values for the true effect, rather than reporting weather a result is statistically significant or not.
