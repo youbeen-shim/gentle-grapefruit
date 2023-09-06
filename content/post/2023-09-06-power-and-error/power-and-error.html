@@ -1,0 +1,56 @@
+---
+title: "Power and Error"
+author: "Youbeen Shim"
+date: "2023-09-06"
+output: html_document
+---
+
+
+
+<div id="quick-refresher-on-errors" class="section level2">
+<h2>Quick refresher on Errors</h2>
+<p>When it comes to hypothesis testing, there are two errors that statisticians care about: Type I and Type II errors.</p>
+<ul>
+<li>Type I Error (False Positive): Concluding that there is a significant difference between Treatment and Control when there is no real difference.<br />
+</li>
+<li>Type II Error (False Negative): Concluding that there is no significant difference when there actually is one.</li>
+</ul>
+<p>By convention, set by Fisher, statisticians control Type I error rates at 0.05 by concluding statistical significance only if the resulting p-value is below 0.05.</p>
+<p>Note that this is by convention only and <em>should</em> vary based on context of the experiment.</p>
+</div>
+<div id="so-when-should-they-change" class="section level2">
+<h2>So when should they change?</h2>
+<p>Generally, statisticians also care about the <em>tradeoff</em> between these two errors. Using a higher p-value threshold means a higher Type I Error rate, but a smaller chance of missing a real difference, leading to a lower Type II Error rate.</p>
+<p>False positives and false negatives do not have the same level of consequences based on context. For example, at court, falsely accusing someone of a crime (false positive) is much worse than letting criminals escape (false negative) due to a lack of evidence. Conversely, when testing for COVID, an erroneous negative result is much more deadly than a false positive result, so the tests are designed to be as sensitive as possible.</p>
+</div>
+<div id="power" class="section level2">
+<h2>Power</h2>
+<p>Power is the probability of detecting a difference between the variants. It is easier to think of it as the probability of rejecting the null when there really is a difference. Why is it so similar to Type II Error rates? Because it effectively is one.
+<code>$$Power = 1 - Type II Error$$</code>
+Alternatively, power could also look like this. Where 1.96 assumes a confidence level of 95% and delta, <code>$\delta$</code>, is the minimum delta of practical interest.
+<code>$$Power_{\delta}=P\left( \left| T \right|\ge 1.96 | \text{true difference is }\delta \right)$$</code></p>
+</div>
+<div id="power-analysis" class="section level2">
+<h2>Power Analysis</h2>
+<p>Something that often catches non-practitioners off-guard is the fact that you can lower the resulting p-value by simply adding more samples. That is because the hypothesis tests are designed to spot the difference between Treatment and Control, not comment on the magnitude of the difference.</p>
+<p>Generally, in the industry, data scientists strive to achieve at least 80% power. In order to do so, we leverage <strong>power analysis</strong> before starting to experiment to decide how many samples are needed to achieve necessary power.
+Typically, data scientist (industry standard) is to achieve at least 80% power in our tests. A simplified sample size necessary (assuming equal split) to achieve that would be:
+<code>$$n\simeq\frac{16\sigma^{2}}{\delta^{2}}$$</code>
+Where sigma squared, <code>$\sigma^{2}$</code>, is the sample variance and delta, <code>$\delta$</code>, is the difference between Treatment and Control.</p>
+<p>There is a limit to this method, especially concerning online controlled experiments. We (1) do not even know what the true difference is (that is why we are testing in the first place!) and (2) the sample variance can change over time as the experiment spans over multiple days. Using the <em>minimum detectable effect</em>, the smallest delta that is practically significant, and proper <em>experiment ramping</em> should mitigate gross errors while being practically useful.</p>
+</div>
+<div id="recommendations-for-small-sample-size-settings" class="section level2">
+<h2>Recommendations for Small Sample Size Settings</h2>
+<p>Inevitably, in the real world, it is common to have small sample sizes relative to the difference we want to measure. This is common in psychology, political science, public health, and, of course, data science. When sample sizes are small, the results may be influence by chance or random variation, making it difficult to determine whether the findings are truly representative of the population being studied.</p>
+<p>Gelman and Carlin (<em>Beyond Power Calculations: Assessing Type S (Sign) and Type M (Magnitude) Errors</em>, 2014) argue for the following in their paper.</p>
+<ol style="list-style-type: decimal">
+<li>Using external information to inform estimates of true effect size, such as previous research or expert knowledge. This can help researchers to determine a plausible range of effect sizes and to design studies that are more likely to detect true effects.</li>
+<li>Focusing on estimates and uncertainties rather than on statistical significance. Researchers should report effect sizes and confidence intervals, providing a range of plausible values for the true effect, rather than reporting weather a result is statistically significant or not.</li>
+<li>Incorporating more rigorous methods such as Bayesian methods, which can account for uncertainty and prior knowledge ina more fleixble way than traditional frequentist methods.</li>
+</ol>
+<p>on top of calculating two additional types of error.</p>
+<ul>
+<li>Type S [sign] Error: The probability of an estimate being in the wrong direction.</li>
+<li>Type M [magintude] Error: The factor by which the magnitude of an effect might be overestimated.</li>
+</ul>
+</div>
