@@ -1,0 +1,171 @@
+---
+title: "Meta Analysis"
+author: "Youbeen Shim"
+date: "2023-09-20"
+output: html_document
+---
+
+# Meta-Analysis
+Simply, meta-analysis (and systemic reviews) sit at the top of the hierarchy of scientific evidence. They combine the findings of many individual studies to reach a more comprehensive and reliable conclusion. 
+
+## Motivation
+Imagine if you get in a heated argument with your friend about the potential health benefit of drinking milk regularly. As you sit through scientific studies, one study says that milk is the best thing ever, another says that it works against every good thing you’ve ever done for your body, and yet another argues that it works - but only for some people. What do you believe? Science isn’t as straightforward as we would like for it to be… 
+
+By using meta-analysis, it is possible to amalgamate these studies, weigh their quality and findings, and come up with an answer that is more trustworthy than any research by itself. 
+
+## Special Consideration of Data Scientists
+Knowing how to conduct a meta-analysis equips a data scientist to deal with the complexities and nuances in data, such as heterogeneity and potential biases, by employing advanced models and techniques that account for these factors. By doing so, data scientists can provide stakeholders with the most comprehensive evidence-based recommendations. 
+
+Additionally, meta-analysis identifies gaps in current research, offering a roadmap for future investigations and a sharper focus for resource allocation. It also saves time and resources by utilizing existing research, offering a quicker route to insights than conducting new studies from scratch. 
+
+Meta-analysis is a practical necessity for data scientists aiming to provide the most reliable, actionable insights in an increasingly complex data and scientific landscape. 
+
+
+# Fisher’s Combined Probability Test (Fisher’s Meta Analysis)
+Like all meta-analysis techniques, Fisher’s Combined Probability Test combines the results from multiple experiments, and does so on the same hypothesis.
+
+Replication is done using either orthogonal randomization or users who were not allocated to the original experiment. By doing so, multiple experiments produce p-values that are independent of each other. 
+
+Intuitively, if the p-values are less than a predetermined cutoff, that provides stronger evidence for the hypothesis. 
+
+## Methodology  
+
+0. **Consider the limitations of the method**  
+
+This includes not considering the effect sizes or directions from individual tests and the assumptions requiring that p-values are independent. 
+
+1. **Establish the Hypothesis** 
+
+We start by determining the hypothesis that is being tested. Something close to: “Version T (Treatment) of the UI increases user retention compared to Version C (Control)”.
+
+2. **Conduct the A/B Tests**  
+
+The team conducts N separate A/B tests. This could be orthogonal replications, on separate populations, and varying time periods, based on the limitation of the data.
+
+3. **Each test will spit out an independent p-value** 
+
+4. **Apply Fisher’s Combined Probability Test** 
+
+Fisher formalized the intuition, leaving a formula for combining p-values from multiple independent statistical tests.  
+`$$T = -2\sum_{i=1}^{k}ln(p_{i})$$`
+
+5. **Determine the significance**  
+
+The test statistic, `$T$`, will approximately follow a chi-squared distribution with degrees of freedom equal to 2 times the number of tests, `$k$`. Compare the value of T to the chi-squared distribution with 2k degrees of freedom to obtain the combined p-value for the tests. Note that, the more extreme the value of T, the stronger the combined evidence against the null.
+
+6. **Interpret** 
+
+If the combined p-value is less than a chosen significance level, we can reject the null, concluding that there is a significant effect across the k A/B tests.
+
+# Other Meta-Analysis Techniques
+
+## Shortfalls of Fisher’s Meta-Analysis  
+
+1. Ignores the Magnitude of Effect: Because it uses only p-values, Fisher's method ignores the magnitude and direction of the effect, which can be critical information.
+
+2. Sensitive to Violation of Independence: The method assumes that all studies are independent. If this assumption is violated, the combined p-value can be misleading.
+
+3. Does Not Account for Study Quality: All p-values are treated equally regardless of the quality or size of the study.
+
+4. Limited to Hypothesis Testing: Fisher’s method is generally used for hypothesis testing and not for estimating the magnitude of an effect size, which can be a significant limitation if the goal is to quantify an effect rather than just to test its significance.
+
+5. Problematic With Heterogeneous Studies: If the studies are measuring different underlying effects, combining their p-values may not make substantive sense and could lead to misleading conclusions.
+
+6. Not Robust to Biases: The method can be affected by publication bias or other biases present in the included studies because it does not account for these factors.
+
+7. Limited Information: Using only p-values omits a lot of other information that could be obtained from the studies, such as confidence intervals, which provide a range of plausible values for an effect size.
+
+8. Can Be Imprecise: Because it uses less information than other methods, the Fisher combined test can sometimes be less precise or have less statistical power than alternative meta-analytic methods.
+
+## List of (Non-Exhaustive) Methods and Models
+
+### Fixed-Effect Model
+Assumptions  
+
+* All studies estimate the same underlying effect.
+* All studies are functionally identical (does not account for heterogeneity among studies).
+
+Advantages  
+
+* Gives more weight to larger studies.
+* Provides an estimate of the common effect size (Fisher’s method does not).
+
+Limitations  
+
+* Due to its lack of consideration of heterogeneity, it may produce biased results if the studies are significantly different from each other.
+
+### Random-Effects Model
+Assumptions  
+
+* The studies are drawn from a distribution of possible effect sizes (accounts for heterogeneity).
+
+Advantages  
+
+* It provides an estimate of the average effect size.
+
+Limitations  
+
+* More complex to conduct and interpret.
+* Tends to give more weight to smaller studies, which can be of lower quality (due to its limited sample size).
+
+### Bayesian Meta-Analysis
+Advantages  
+
+* Allows for the incorporation of prior information in the analysis, making it highly flexible.
+* Also accounts for various types of data and heterogeneity among studies.
+
+Limitations  
+
+* Computationally intensive.
+* Requires expertise in Bayesian statistical methods.
+* Results are sensitive to the choice of prior distributions, meaning that the understanding and bias of the scientist conducting the meta-analysis may leak into the methodology.
+
+### Cumulative Meta-Analysis
+Advantages  
+
+* Provides a way to see how the combined effect size evolves over time as each study is added to the meta-analysis. This can help identify trends and the stability of findings over time.
+
+Limitations  
+
+* Not suitable for all types of data.
+* Gives an illusion of finality. In reality, most discoveries are constantly evolving.
+
+### Meta-Regression
+Advantages  
+
+* Allows for the inclusion of covariates that may explain the heterogeneity among study results. This can provide more nuanced insights into the factors affecting the effect size.
+
+Limitations  
+
+* Requires more assumptions & is more complex.
+* Requires a sufficient number of studies to have the power to detect relationships.
+
+### Mantel-Haenszel Method
+Advantages  
+
+* Builds off the fixed-effect model, but can be adjusted to consider random effects.
+* Accounts for study-specific control of confounding variables.
+* Mainly used for combining odds ratios or risk ratios in binary outcome data. 
+
+Limitations  
+
+* Same as the fixed-effect model.
+* More appropriate for dichotomous data (data with two possible values). 
+
+### DerSimonian and Laird Method
+Advantages  
+
+* Builds off the random-effects model.
+
+Limitations  
+
+* Tends to underestimate the true variance of effect sizes, which is more prevalent when only few studies are included in the meta-analysis.
+
+### Vote Counting
+Advantages  
+
+* Simple to conduct (counts the number of studies that found a significant effect in a particular direction).
+
+Limitations  
+
+* Ignores size and precision of the effects found in individual studies.

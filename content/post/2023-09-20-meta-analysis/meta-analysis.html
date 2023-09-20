@@ -1,0 +1,185 @@
+---
+title: "Meta Analysis"
+author: "Youbeen Shim"
+date: "2023-09-20"
+output: html_document
+---
+
+
+
+<div id="meta-analysis" class="section level1">
+<h1>Meta-Analysis</h1>
+<p>Simply, meta-analysis (and systemic reviews) sit at the top of the hierarchy of scientific evidence. They combine the findings of many individual studies to reach a more comprehensive and reliable conclusion.</p>
+<div id="motivation" class="section level2">
+<h2>Motivation</h2>
+<p>Imagine if you get in a heated argument with your friend about the potential health benefit of drinking milk regularly. As you sit through scientific studies, one study says that milk is the best thing ever, another says that it works against every good thing you’ve ever done for your body, and yet another argues that it works - but only for some people. What do you believe? Science isn’t as straightforward as we would like for it to be…</p>
+<p>By using meta-analysis, it is possible to amalgamate these studies, weigh their quality and findings, and come up with an answer that is more trustworthy than any research by itself.</p>
+</div>
+<div id="special-consideration-of-data-scientists" class="section level2">
+<h2>Special Consideration of Data Scientists</h2>
+<p>Knowing how to conduct a meta-analysis equips a data scientist to deal with the complexities and nuances in data, such as heterogeneity and potential biases, by employing advanced models and techniques that account for these factors. By doing so, data scientists can provide stakeholders with the most comprehensive evidence-based recommendations.</p>
+<p>Additionally, meta-analysis identifies gaps in current research, offering a roadmap for future investigations and a sharper focus for resource allocation. It also saves time and resources by utilizing existing research, offering a quicker route to insights than conducting new studies from scratch.</p>
+<p>Meta-analysis is a practical necessity for data scientists aiming to provide the most reliable, actionable insights in an increasingly complex data and scientific landscape.</p>
+</div>
+</div>
+<div id="fishers-combined-probability-test-fishers-meta-analysis" class="section level1">
+<h1>Fisher’s Combined Probability Test (Fisher’s Meta Analysis)</h1>
+<p>Like all meta-analysis techniques, Fisher’s Combined Probability Test combines the results from multiple experiments, and does so on the same hypothesis.</p>
+<p>Replication is done using either orthogonal randomization or users who were not allocated to the original experiment. By doing so, multiple experiments produce p-values that are independent of each other.</p>
+<p>Intuitively, if the p-values are less than a predetermined cutoff, that provides stronger evidence for the hypothesis.</p>
+<div id="methodology" class="section level2">
+<h2>Methodology</h2>
+<ol start="0" style="list-style-type: decimal">
+<li><strong>Consider the limitations of the method</strong></li>
+</ol>
+<p>This includes not considering the effect sizes or directions from individual tests and the assumptions requiring that p-values are independent.</p>
+<ol style="list-style-type: decimal">
+<li><strong>Establish the Hypothesis</strong></li>
+</ol>
+<p>We start by determining the hypothesis that is being tested. Something close to: “Version T (Treatment) of the UI increases user retention compared to Version C (Control)”.</p>
+<ol start="2" style="list-style-type: decimal">
+<li><strong>Conduct the A/B Tests</strong></li>
+</ol>
+<p>The team conducts N separate A/B tests. This could be orthogonal replications, on separate populations, and varying time periods, based on the limitation of the data.</p>
+<ol start="3" style="list-style-type: decimal">
+<li><p><strong>Each test will spit out an independent p-value</strong></p></li>
+<li><p><strong>Apply Fisher’s Combined Probability Test</strong></p></li>
+</ol>
+<p>Fisher formalized the intuition, leaving a formula for combining p-values from multiple independent statistical tests.<br />
+<code>$$T = -2\sum_{i=1}^{k}ln(p_{i})$$</code></p>
+<ol start="5" style="list-style-type: decimal">
+<li><strong>Determine the significance</strong></li>
+</ol>
+<p>The test statistic, <code>$T$</code>, will approximately follow a chi-squared distribution with degrees of freedom equal to 2 times the number of tests, <code>$k$</code>. Compare the value of T to the chi-squared distribution with 2k degrees of freedom to obtain the combined p-value for the tests. Note that, the more extreme the value of T, the stronger the combined evidence against the null.</p>
+<ol start="6" style="list-style-type: decimal">
+<li><strong>Interpret</strong></li>
+</ol>
+<p>If the combined p-value is less than a chosen significance level, we can reject the null, concluding that there is a significant effect across the k A/B tests.</p>
+</div>
+</div>
+<div id="other-meta-analysis-techniques" class="section level1">
+<h1>Other Meta-Analysis Techniques</h1>
+<div id="shortfalls-of-fishers-meta-analysis" class="section level2">
+<h2>Shortfalls of Fisher’s Meta-Analysis</h2>
+<ol style="list-style-type: decimal">
+<li><p>Ignores the Magnitude of Effect: Because it uses only p-values, Fisher’s method ignores the magnitude and direction of the effect, which can be critical information.</p></li>
+<li><p>Sensitive to Violation of Independence: The method assumes that all studies are independent. If this assumption is violated, the combined p-value can be misleading.</p></li>
+<li><p>Does Not Account for Study Quality: All p-values are treated equally regardless of the quality or size of the study.</p></li>
+<li><p>Limited to Hypothesis Testing: Fisher’s method is generally used for hypothesis testing and not for estimating the magnitude of an effect size, which can be a significant limitation if the goal is to quantify an effect rather than just to test its significance.</p></li>
+<li><p>Problematic With Heterogeneous Studies: If the studies are measuring different underlying effects, combining their p-values may not make substantive sense and could lead to misleading conclusions.</p></li>
+<li><p>Not Robust to Biases: The method can be affected by publication bias or other biases present in the included studies because it does not account for these factors.</p></li>
+<li><p>Limited Information: Using only p-values omits a lot of other information that could be obtained from the studies, such as confidence intervals, which provide a range of plausible values for an effect size.</p></li>
+<li><p>Can Be Imprecise: Because it uses less information than other methods, the Fisher combined test can sometimes be less precise or have less statistical power than alternative meta-analytic methods.</p></li>
+</ol>
+</div>
+<div id="list-of-non-exhaustive-methods-and-models" class="section level2">
+<h2>List of (Non-Exhaustive) Methods and Models</h2>
+<div id="fixed-effect-model" class="section level3">
+<h3>Fixed-Effect Model</h3>
+<p>Assumptions</p>
+<ul>
+<li>All studies estimate the same underlying effect.</li>
+<li>All studies are functionally identical (does not account for heterogeneity among studies).</li>
+</ul>
+<p>Advantages</p>
+<ul>
+<li>Gives more weight to larger studies.</li>
+<li>Provides an estimate of the common effect size (Fisher’s method does not).</li>
+</ul>
+<p>Limitations</p>
+<ul>
+<li>Due to its lack of consideration of heterogeneity, it may produce biased results if the studies are significantly different from each other.</li>
+</ul>
+</div>
+<div id="random-effects-model" class="section level3">
+<h3>Random-Effects Model</h3>
+<p>Assumptions</p>
+<ul>
+<li>The studies are drawn from a distribution of possible effect sizes (accounts for heterogeneity).</li>
+</ul>
+<p>Advantages</p>
+<ul>
+<li>It provides an estimate of the average effect size.</li>
+</ul>
+<p>Limitations</p>
+<ul>
+<li>More complex to conduct and interpret.</li>
+<li>Tends to give more weight to smaller studies, which can be of lower quality (due to its limited sample size).</li>
+</ul>
+</div>
+<div id="bayesian-meta-analysis" class="section level3">
+<h3>Bayesian Meta-Analysis</h3>
+<p>Advantages</p>
+<ul>
+<li>Allows for the incorporation of prior information in the analysis, making it highly flexible.</li>
+<li>Also accounts for various types of data and heterogeneity among studies.</li>
+</ul>
+<p>Limitations</p>
+<ul>
+<li>Computationally intensive.</li>
+<li>Requires expertise in Bayesian statistical methods.</li>
+<li>Results are sensitive to the choice of prior distributions, meaning that the understanding and bias of the scientist conducting the meta-analysis may leak into the methodology.</li>
+</ul>
+</div>
+<div id="cumulative-meta-analysis" class="section level3">
+<h3>Cumulative Meta-Analysis</h3>
+<p>Advantages</p>
+<ul>
+<li>Provides a way to see how the combined effect size evolves over time as each study is added to the meta-analysis. This can help identify trends and the stability of findings over time.</li>
+</ul>
+<p>Limitations</p>
+<ul>
+<li>Not suitable for all types of data.</li>
+<li>Gives an illusion of finality. In reality, most discoveries are constantly evolving.</li>
+</ul>
+</div>
+<div id="meta-regression" class="section level3">
+<h3>Meta-Regression</h3>
+<p>Advantages</p>
+<ul>
+<li>Allows for the inclusion of covariates that may explain the heterogeneity among study results. This can provide more nuanced insights into the factors affecting the effect size.</li>
+</ul>
+<p>Limitations</p>
+<ul>
+<li>Requires more assumptions &amp; is more complex.</li>
+<li>Requires a sufficient number of studies to have the power to detect relationships.</li>
+</ul>
+</div>
+<div id="mantel-haenszel-method" class="section level3">
+<h3>Mantel-Haenszel Method</h3>
+<p>Advantages</p>
+<ul>
+<li>Builds off the fixed-effect model, but can be adjusted to consider random effects.</li>
+<li>Accounts for study-specific control of confounding variables.</li>
+<li>Mainly used for combining odds ratios or risk ratios in binary outcome data.</li>
+</ul>
+<p>Limitations</p>
+<ul>
+<li>Same as the fixed-effect model.</li>
+<li>More appropriate for dichotomous data (data with two possible values).</li>
+</ul>
+</div>
+<div id="dersimonian-and-laird-method" class="section level3">
+<h3>DerSimonian and Laird Method</h3>
+<p>Advantages</p>
+<ul>
+<li>Builds off the random-effects model.</li>
+</ul>
+<p>Limitations</p>
+<ul>
+<li>Tends to underestimate the true variance of effect sizes, which is more prevalent when only few studies are included in the meta-analysis.</li>
+</ul>
+</div>
+<div id="vote-counting" class="section level3">
+<h3>Vote Counting</h3>
+<p>Advantages</p>
+<ul>
+<li>Simple to conduct (counts the number of studies that found a significant effect in a particular direction).</li>
+</ul>
+<p>Limitations</p>
+<ul>
+<li>Ignores size and precision of the effects found in individual studies.</li>
+</ul>
+</div>
+</div>
+</div>
