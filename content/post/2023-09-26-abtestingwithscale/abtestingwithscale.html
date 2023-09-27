@@ -1,0 +1,86 @@
+---
+title: "AB Testing, Scaled"
+author: "Youbeen Shim"
+date: "2023-09-27"
+output: html_document
+---
+
+
+
+<div id="ab-testing-for-large-organizations" class="section level1">
+<h1>A/B Testing for Large Organizations</h1>
+<div id="motivation" class="section level2">
+<h2>Motivation</h2>
+<p>A/B testing for larger corporations differs in several ways, mainly due to the increased complexity, broader resources, diverse audience segments, and the potential for more granular testing.</p>
+</div>
+</div>
+<div id="assumptions---shifted" class="section level1">
+<h1>Assumptions - Shifted</h1>
+<p>Compared to A/B testing in a smaller organization with more dynamic movements, A/B testing in larger corporations differ in the following ways:</p>
+<ol style="list-style-type: decimal">
+<li>More Data.</li>
+</ol>
+<p>Larger corporations have a more substantial user base, which means more data points and (hopefully) quicker results.</p>
+<p>However, larger corporations often operate in multiple jurisdictions and might need to consider legal and compliance issues related to data collection and user privacy.</p>
+<ol start="2" style="list-style-type: decimal">
+<li>Diverse Audiences.</li>
+</ol>
+<p>Larger user base implies more diverse audience segments, which often implies the need for segment-specific tests.</p>
+<ol start="3" style="list-style-type: decimal">
+<li>Higher Stakes / Economies of Scale.</li>
+</ol>
+<p>Mistakes in A/B testing can have more significant implications due to the sheer volume of customers. 1% loss in earnings may be negligible for an individual making 100k/year, but it is massive for a company generating billions of dollars. Conversely, smaller increments in the positive direction are more meaningful.</p>
+<p>Tangentially, scalability becomes a top priority.</p>
+<ol start="4" style="list-style-type: decimal">
+<li>Complex Organizational Structures.</li>
+</ol>
+<p>Assume more red tape. Decisions may require multiple levels of approval and collaboration across teams.</p>
+<p>The scope of “stakeholders” increases from just team members to possibly board members, investors, or regional heads.</p>
+<ol start="5" style="list-style-type: decimal">
+<li>Resource Availability.</li>
+</ol>
+<p>Larger corporations generally have access to more advanced tools, dedicated teams, and budgets for A/B testing.</p>
+</div>
+<div id="additional-considerations" class="section level1">
+<h1>Additional Considerations</h1>
+<div id="strength-in-numbers-hands" class="section level2">
+<h2>Strength in Numbers (Hands)</h2>
+<p>As organizations get bigger, it is critical to overhaul or update the following common bottlenecks to better leverage the strength in numbers.</p>
+<ol style="list-style-type: decimal">
+<li>Rigorous Review Process
+<ul>
+<li>Propose and review test ideas through a formalized process involving multiple stakeholders.</li>
+<li>A dedicated team or committee to oversee, schedule, and prioritize A/B tests can be helpful.</li>
+</ul></li>
+<li>Detailed Monitoring
+<ul>
+<li>Real-time monitoring should be available and protocols for pausing tests should be standardized (have an <em>alarm</em> and a <em>button</em>).</li>
+<li>With diverse audiences, it is essential to monitor for biases and anomalies that can arise between different segments.</li>
+</ul></li>
+<li>Standardized Reporting and Capability for Complex Analysis
+<ul>
+<li>Most of the reports should be automated, with the ability to work across multiple departments.</li>
+</ul></li>
+<li>Continuous Training
+<ul>
+<li>Data scientists should not be the only ones running the A/B tests. Developer and Product teams should participate in an ongoing training to stay updated on the best practices on A/B testing specific to the company.</li>
+</ul></li>
+</ol>
+</div>
+<div id="strength-in-numbers-data" class="section level2">
+<h2>Strength in Numbers (Data)</h2>
+<p>As the product reaches a wider audience, the statistical power of the tests begin to rise along with the amount of data available. This empowers us to do the following, for starters:</p>
+<ol style="list-style-type: decimal">
+<li>Refine Objectives</li>
+</ol>
+<p>With more data, there are more insights, and with more insights, larger corporations can set more refined and specific objectives. Segment-specific objectives, such as ones based on demography, geography, or behavior, can be set.</p>
+<ol start="2" style="list-style-type: decimal">
+<li>Granular Variations</li>
+</ol>
+<p><a href="https://towardsdatascience.com/5-ways-to-increase-statistical-power-377c00dd0214">Power of a statistical test rises with more data</a>. With this luxury, more subtle changes can be tested.</p>
+<ol start="3" style="list-style-type: decimal">
+<li>Segmentation Testing</li>
+</ol>
+<p><a href="https://inseaddataanalytics.github.io/INSEADAnalytics/CourseSessions/Sessions45/ClusterAnalysisReading.html">Segments</a> are a neat way to say that “this group of people have similarities that are relevant, and somehow not captured by any other key variables, so we’ll just tag them together”. It simplifies the differences, but when your branch of science has a deadline, simplifications are welcome.</p>
+</div>
+</div>

@@ -1,0 +1,80 @@
+---
+title: "AB Testing, Scaled"
+author: "Youbeen Shim"
+date: "2023-09-27"
+output: html_document
+---
+
+# A/B Testing for Large Organizations
+
+## Motivation
+
+A/B testing for larger corporations differs in several ways, mainly due to the increased complexity, broader resources, diverse audience segments, and the potential for more granular testing.
+
+# Assumptions - Shifted
+
+Compared to A/B testing in a smaller organization with more dynamic movements, A/B testing in larger corporations differ in the following ways: 
+
+1. More Data. 
+
+Larger corporations have a more substantial user base, which means more data points and (hopefully) quicker results.
+
+However, larger corporations often operate in multiple jurisdictions and might need to consider legal and compliance issues related to data collection and user privacy.
+
+2. Diverse Audiences. 
+
+Larger user base implies more diverse audience segments, which often implies the need for segment-specific tests.
+
+3. Higher Stakes / Economies of Scale. 
+
+Mistakes in A/B testing can have more significant implications due to the sheer volume of customers. 1% loss in earnings may be negligible for an individual making 100k/year, but it is massive for a company generating billions of dollars. Conversely, smaller increments in the positive direction are more meaningful. 
+
+Tangentially, scalability becomes a top priority. 
+
+4. Complex Organizational Structures. 
+
+Assume more red tape. Decisions may require multiple levels of approval and collaboration across teams. 
+
+The scope of “stakeholders” increases from just team members to possibly board members, investors, or regional heads.
+
+5. Resource Availability. 
+
+Larger corporations generally have access to more advanced tools, dedicated teams, and budgets for A/B testing. 
+
+
+# Additional Considerations
+
+## Strength in Numbers (Hands)
+
+As organizations get bigger, it is critical to overhaul or update the following common bottlenecks to better leverage the strength in numbers.  
+
+1. Rigorous Review Process   
+    * Propose and review test ideas through a formalized process involving multiple stakeholders.
+    * A dedicated team or committee to oversee, schedule, and prioritize A/B tests can be helpful.
+
+2. Detailed Monitoring  
+    * Real-time monitoring should be available and protocols for pausing tests should be standardized (have an *alarm* and a *button*).
+    * With diverse audiences, it is essential to monitor for biases and anomalies that can arise between different segments.
+
+3. Standardized Reporting and Capability for Complex Analysis
+    * Most of the reports should be automated, with the ability to work across multiple departments.
+
+4. Continuous Training
+    * Data scientists should not be the only ones running the A/B tests. Developer and Product teams should participate in an ongoing training to stay updated on the best practices on A/B testing specific to the company.
+
+
+## Strength in Numbers (Data)
+
+As the product reaches a wider audience, the statistical power of the tests begin to rise along with the amount of data available. This empowers us to do the following, for starters:
+
+1. Refine Objectives  
+
+With more data, there are more insights, and with more insights, larger corporations can set more refined and specific objectives. Segment-specific objectives, such as ones based on demography, geography, or behavior, can be set.  
+
+2. Granular Variations  
+
+[Power of a statistical test rises with more data](https://towardsdatascience.com/5-ways-to-increase-statistical-power-377c00dd0214). With this luxury, more subtle changes can be tested.
+
+3. Segmentation Testing  
+
+[Segments](https://inseaddataanalytics.github.io/INSEADAnalytics/CourseSessions/Sessions45/ClusterAnalysisReading.html) are a neat way to say that “this group of people have similarities that are relevant, and somehow not captured by any other key variables, so we’ll just tag them together”. It simplifies the differences, but when your branch of science has a deadline, simplifications are welcome.

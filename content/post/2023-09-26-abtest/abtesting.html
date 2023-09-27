@@ -1,0 +1,75 @@
+---
+title: "AB Testing"
+author: "Youbeen Shim"
+date: "2023-09-27"
+output: html_document
+---
+
+
+
+<div id="ab-testing" class="section level1">
+<h1>A/B Testing</h1>
+<p>A/B Testing is a method of comparing two versions of a product to determine which one performs better in terms of a specific metric (e.g., conversions, clicks, engagement, etc.). It commonly leverages hypothesis testing methods, but is often more focused on practical significance.</p>
+<div id="motivation" class="section level2">
+<h2>Motivation</h2>
+<p>As data scientists, A/B Testing enables us to test our hypothesis, make decisions, answer questions, and monitor changes we make to our user experiences. Some of questions that A/B testings allow us to answer include:</p>
+<ul>
+<li>Is paying for the word “Grapefruit” on Google worth it?<br />
+</li>
+<li>How effective would it be to include the client’s name in the headline of an email sent to them?<br />
+</li>
+<li>Will sending push notifications with action items prompt them to act upon them?<br />
+</li>
+<li>Would refreshing the newly designed onboarding experience hurt the business’ guardrail metrics?</li>
+</ul>
+<p>Some statisticians maintain that A/B testing is the only way to <em>truly</em> infer causality. Without A/B testing, we wouldn’t be able to maintain with any certainty that the changes we make have any desirable outcomes. Employing A/B testing empowers us to avoid the common “correlation implies causation” trap that all statisticians should be aware of.</p>
+</div>
+<div id="consideration-for-context" class="section level2">
+<h2>Consideration for Context</h2>
+<p>Most of my experience in designing A/B tests come from a small, finTech, start-up. It was common for the metrics I was working on to have:</p>
+<ol style="list-style-type: decimal">
+<li>High amounts of friction;<br />
+</li>
+<li>Very low upper bounds on the user level; and.</li>
+<li>Possibly high delays in movement if they were to move at all.</li>
+</ol>
+<p>Conversely, an ad-based company (such as the Google Ads team) or a content based company (such as TikTok) can simply optimize for clicks and have near-instantaneous measure of effect. Netflix famously makes a decision for their A/B tests in less than 15 minutes [ <a href="https://www.youtube.com/watch?app=desktop&amp;v=IdkdtQQBDi4">1</a>, <a href="https://netflixtechblog.com/product-integration-testing-at-the-speed-of-netflix-72e4117734a7">2</a> ].</p>
+<p>For small companies, with fewer resources and data points, it is crucial to emphasize larger effect sizes to ensure that observed changes are significant and not due to random chance. In other words, there is a cap on the number of A/B tests that can be run, and it is more practical to use it on large product changes and less on small tweaks and optimization changes.</p>
+</div>
+</div>
+<div id="implementation" class="section level1">
+<h1>Implementation</h1>
+<ol style="list-style-type: decimal">
+<li><strong>Define the Objective</strong></li>
+</ol>
+<p>Identify the specific metric you wish to improve. It could be obvious, like conversion rate or click-through rate; it could also be less direct, like direct deposit size or new account adoption. It is important to pick a metric that will show impact and be relevant to the company’s overall goals.</p>
+<ol start="2" style="list-style-type: decimal">
+<li><strong>Determine the Variation</strong></li>
+</ol>
+<p>Given the (presumably) small sample size, focus on significant changes rather than minor tweaks. For example, entirely different call-to-action messages are of higher priority than different colors for buttons.</p>
+<ol start="3" style="list-style-type: decimal">
+<li><strong>Determine Sample Size and Duration</strong></li>
+</ol>
+<p>Determine how much traffic you’ll need and how long the test should be run for. Consider the appropriate power (historically 0.8) and Type I Error Level (historically 0.05) for the context of the test. Larger sample size (more data) will improve statistical significance in a hypothesis test, but the tests should be short enough to be actionable.</p>
+<ol start="4" style="list-style-type: decimal">
+<li><strong>Split the Users</strong></li>
+</ol>
+<p>Split your customers (randomized units) into two groups: Control and Treatment. Base hypothesis tests require independence - watch out for bias or factors that impact the random assignment. It is also meaningful to test for this using A/A Tests and address possible leakage.</p>
+<ol start="5" style="list-style-type: decimal">
+<li><p><strong>Implement the Test</strong></p></li>
+<li><p><strong>Monitor</strong></p></li>
+</ol>
+<p>Watch out for events, promotions, other experiments, or any other factors that could skew results.</p>
+<ol start="7" style="list-style-type: decimal">
+<li><strong>Analyze the Results &amp; Draw Conclusions</strong></li>
+</ol>
+<p>Use a statistical test to compare the performance of the two groups. If the Treatment significantly outperforms the Control with a large effect size, consider implementing the change.</p>
+<ol start="8" style="list-style-type: decimal">
+<li><strong>Document and Share Results</strong></li>
+</ol>
+<p>Regardless of the result, document everything -objectives, hypotheses, methodologies, results, and conclusions.</p>
+<ol start="9" style="list-style-type: decimal">
+<li><strong>Iterate</strong></li>
+</ol>
+<p>A/B tests are rarely one-and-done. Use the insights from the current test to inform the future ones. Continuously improve and build the knowledge base of the company.</p>
+</div>

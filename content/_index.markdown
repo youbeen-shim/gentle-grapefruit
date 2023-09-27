@@ -2,7 +2,7 @@
 title: Home
 ---
 
-[<img src="grapefruit.svg" style="max-width:15%;min-width:40px;float:right;" alt="Grapefruit but not really" />](https://github.com/youbeen-shim?tab=repositories)
+[<img src="../resources/_gen/images/grapefruit.svg" style="max-width:15%;min-width:40px;float:right;" alt="Grapefruit, but not really" />](https://github.com/youbeen-shim?tab=repositories)
 
 # Welcome to Grapefruit
 
