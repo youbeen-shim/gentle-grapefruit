@@ -1,0 +1,83 @@
+---
+title: 'Bridging the Gap: Coding in Statistics Education'
+author: Youbeen Shim
+date: '2025-01-06'
+slug: bridging-the-gap-coding-in-statistics-education
+categories: []
+tags: []
+---
+
+Having dipped my toes in both academia and industry as someone with a background in statistics and computer science, I frequently notice the growing disconnect between traditional statistics education and the practical coding skills demanded by industry and research. Of course, I am not alone in saying this: many professionals highlight the [lack of practical coding skills in traditionally educated graduates](https://www.institutedata.com/us/blog/coding-in-data-science-how-much-is-required) and the [lucrative opportunity]([https://javascript.plainenglish.io/the-traditional-vs-practical-approach-of-learning-programming-f696043e3c17]) for individuals who can [bridge the gap](https://www.nobledesktop.com/learn/coding/industries-and-professions).
+
+Today, I want to execute a thought experiment - reimagining statistics education using [Kern’s 6-step curriculum development approach](https://ucimedsim.home.blog/2019/06/13/curriculum-development-kerns-6-step). Specifically, addressing the critical gap in coding competency in the current curriculum. 
+
+## Step 1: Problem Identification and General Needs Assessment
+
+The current statistics curriculum in many institutions focuses heavily on theoretical foundations while treating coding as an afterthought. After talking to many junior level data scientists and statistical/applied researchers, a common trend appears to be a curriculum that is theoretically rigorous, with one or two courses where coding or practical application is the foundation. Even in said “coding classes”, often, most of the code is provided by the instructor or the coding education is delegated to the computer science department. 
+
+This leads to the ever-so-present issue of graduates struggling with real-world data analysis tasks despite understanding statistical concepts. Data manipulation, visualization, and analysis require robust programming skills, and concepts such as version control, unit testing, and functional programming are foundational to a collaborative practice in both academia and industry. 
+
+## Step 2: Targeted Needs Assessment
+
+To better understand this gap, we need to examine multiple perspectives. Students report feeling overwhelmed when faced with real datasets, citing difficulties in data cleaning, manipulation, and visualization using programming languages. Employers consistently mention that new hires require extensive training in coding practices, version control, and automated analysis pipelines. Academic researchers note that students struggle to implement complex statistical methods programmatically.
+
+## Step 3: Goals and Objectives
+
+Based on the needs assessment above, following objectives can help orient our curriculum revision. 
+
+By the time students receive their diploma, they should be able to:
+
+* Implement statistical methods using modern programming languages (R/Python)
+* Create reproducible analysis workflows
+* Debug code effectively
+* Optimize code for large datasets
+* Collaborate using version control systems
+* Translate statistical theory into practical implementations
+
+## Step 4: Educational Strategies
+
+The greatest need is for coding and good development practices to be weaved throughout the curriculum rather than treating it as a separate component. Practically, this means:
+
+Introducing basic programming logic early on, ideally during the students’ first year of education. This course, rather than focusing on algorithmic complexity, would instead prioritize good practices such as version control, code reviews, and pair programming. 
+
+Creating integrated assignments where statistical concepts are taught alongside their implementation. For example, when learning hypothesis testing, students would simultaneously learn both the theoretical foundations and how to implement tests programmatically using statistical packages. 
+
+Designing project-based learning, where students work with real-world datasets and are challenged to work in a collaborative manner. 
+
+## Step 5: Implementation
+
+We must recognize the slow-moving institution that statistics education has become, and carefully consider both resources and potential barriers:
+
+Faculty: Statistics instructors may need training in modern coding practices. Professional development programs and sessions led by industry experts for specialized topics would aid in this effort. 
+
+Infrastructure: Education needs to be equitable. Appropriate computing resources, guiding standard development environments, and ensuring all students have equal access to necessary tools are essential.
+
+Curriculum Integration: Rather than relying on separate coding courses, existing courses should incorporate programming alongside statistical concepts.
+
+## Step 6: Evaluation and Feedback
+
+Continuous evaluation is the cornerstone of a strong implementation. We should:
+
+monitor student progress through:
+
+* Regular coding assessments integrated with statistical concepts
+* Portfolio development of data analysis projects
+* Technical interviews with industry partners
+* Alumni surveys tracking job placement and career progression
+
+gather feedback from:
+
+* Employers on graduate performance
+* Students on course integration and pacing
+* Faculty on implementation challenges
+* Industry partners on curriculum relevance
+
+This feedback would then loop back into Step 1, allowing us to continuously refine our approach.
+
+## Conclusion
+
+Applying Kern's 6-step approach to statistics education helps us systematically address the coding skills gap while maintaining rigorous statistical foundations. The key is integration rather than addition – weaving coding throughout the curriculum rather than treating it as a separate skill.
+
+The iterative nature of Kern's model is particularly valuable here, as programming languages and tools evolve rapidly. Regular evaluation and adjustment ensure our curriculum remains relevant to current industry needs while maintaining academic rigor.
+
+The goal isn't to transform statistics programs into computer science degrees, but rather to ensure our statisticians can effectively apply their knowledge in modern data-driven environments. Through careful application of Kern's framework, we can create a curriculum that produces well-rounded statisticians equipped for the challenges of contemporary data analysis.
