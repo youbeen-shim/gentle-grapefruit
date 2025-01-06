@@ -11,6 +11,8 @@ Having dipped my toes in both academia and industry as someone with a background
 
 Today, I want to execute a thought experiment - reimagining statistics education using [Kern’s 6-step curriculum development approach](https://ucimedsim.home.blog/2019/06/13/curriculum-development-kerns-6-step). Specifically, addressing the critical gap in coding competency in the current curriculum. 
 
+See the inspiration for this post [here](https://pmc.ncbi.nlm.nih.gov/articles/PMC6685461/) and [here](https://journals.lww.com/academicmedicine/fulltext/2021/09000/using_kern_s_6_step_approach_to_integrate_health.30.aspx).
+
 ## Step 1: Problem Identification and General Needs Assessment
 
 The current statistics curriculum in many institutions focuses heavily on theoretical foundations while treating coding as an afterthought. After talking to many junior level data scientists and statistical/applied researchers, a common trend appears to be a curriculum that is theoretically rigorous, with one or two courses where coding or practical application is the foundation. Even in said “coding classes”, often, most of the code is provided by the instructor or the coding education is delegated to the computer science department. 
