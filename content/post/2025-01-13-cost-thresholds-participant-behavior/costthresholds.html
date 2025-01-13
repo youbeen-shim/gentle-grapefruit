@@ -1,0 +1,157 @@
+---
+title: Cost Thresholds & Participant Behavior
+author: Youbeen Shim
+date: '2025-01-13'
+slug: cost-thresholds-participant-behavior
+categories: []
+tags: []
+---
+
+
+
+<p>Have you ever wondered this - when do treatment costs change patient behavior?</p>
+<div id="context" class="section level2">
+<h2>Context</h2>
+<p>This analysis was an accompaniment to a series of analyses surrounding the preventative treatment for tuberculosis for HIV-infected patients in Uganda. Similar populations (based on age, gender, bmi, and pre-existing comorbidities matched using k nearest neighbors then split into groups) were then divided into three groups: DOT, SAT, and Choice.</p>
+<p>DOT is the standard treatment procedure, where the individuals were asked to come into the treatment facility every week. SAT was the modified, remote-first treatment procedure that scheduled the individuals to come once every four weeks. Choice group was aptly offered a choice to choose between the two treatments.</p>
+<p>We are already aware that <a href="https://link.springer.com/article/10.1186/s43058-021-00173-2">a 12-dose, once-weekly regimen of isoniazid and rifapentine (3HP) is effective in preventing tuberculosis (TB) among people living with HIV (PLHIV)</a>. However, it is <a href="https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0246113">unclear whether 3HP should be provided by directly observed therapy (DOT) or self-administered therapy (SAT)</a>. Though, those assigned to DOT identified more barriers to completing therapy than those given a choice. Finally, convenience and travel required to complete 3HP therapy were important factors in deciding between delivery modalities.</p>
+</div>
+<div id="the-problem" class="section level2">
+<h2>the Problem</h2>
+<p>My client was interested in doing a threshold analysis. Specifically, she wanted to identify the point where the cost of the treatment became so significant relative to the patient’s income that it influenced their decision.</p>
+</div>
+<div id="the-analytical-approach" class="section level2">
+<h2>the Analytical Approach</h2>
+<div id="before-we-start" class="section level3">
+<h3>Before we start</h3>
+<p>I hope that this sort of problem seems familiar for you, reader. This isn’t just an academic question - it is a real challenge that not only healthcare providers and policymakers grapple with, but easily extends to corporate or funding settings. Uncovering these decision points and learning the methodology to approach these types of problems will help design better payment systems and ensure treatments remain accessible to those who need them.</p>
+<p>This will be a 3-part series. Part one, where we are now, will address the simplified approach to get close to the answer. Part two will discuss the use of generalized linear models and the consideration for covariates, which are fundamental especially to healthcare decisions that are multivariate by nature. Part three will cover a continuous approach to cost analysis, which is methodologically more rigorous but theoretically more sound.</p>
+</div>
+<div id="the-background" class="section level3">
+<h3>the Background</h3>
+<p>The base dataset included, but was not limited to, the following variables:
+Patient demographics (age, gender, marriage status)
+Geographic factors (distance from facility, commute time, transportation type)
+Economic indicators (employment status, hourly income)
+Treatment costs</p>
+<p>After exploratory data analysis and discussions with the client and the research facilitator, we concluded that while the relationship between cost and treatment choice existed, there was a need to standardize the cost using the patient’s income which led us to the Cost-to-Income Ratio (CIR).</p>
+<p><span class="math display">\[CIR = \frac{\text{Cost of Treatment}}{\text{Approximate Annual Income}} \times 100\%\]</span></p>
+<p>Referring to the CIR, the object of the analysis was to identify a critical point (a threshold) where the cost of the treatment impacted the patients’ decision making process. In order to do so, I visualized a chart where the x-axis was the threshold and y-axis was the proportion of patients where their cost of treatment over income exceeded the threshold. For example, looking at the 10% threshold (cost of treatment was 10% of the client’s income), 95% of the DOT group exceed the threshold (pay more than 10% of their income for their treatment) while SAT group was comparatively better off financially, with 50% of the group exceeding the threshold.</p>
+</div>
+<div id="the-threshold" class="section level3">
+<h3>the Threshold</h3>
+<p>There are already some working definitions of <a href="https://pmc.ncbi.nlm.nih.gov/articles/PMC10515247/">“catastrophic expenditure”</a>, or out-of-pocket payments for healthcare that exceed a certain threshold of a household’s ability to pay. The World Health Organization uses a “percentage of capacity to pay” approach, and defines catastrophic expenditure as <a href="https://www.who.int/data/gho/data/themes/topics/financial-protection">out-of-pocket payments that exceed 40% of a household’s non-subsistence income (income available after meeting basic needs)</a>. While <a href="https://www.frontiersin.org/journals/public-health/articles/10.3389/fpubh.2023.1122424/full">other</a> <a href="https://jamanetwork.com/journals/jamanetworkopen/fullarticle/2770949">researchers</a> use the more easily accessible “percentage of total expenditure” approach, typically ranging from 10% to 40% of total household expenditure.</p>
+<p>With that context in mind, we can now go back to the data visualization. The client and I identified 15%, 25%, and 55% as reasonable thresholds to explore change in patient behavior and choice. Besides being round numbers backed by context regarding catastrophic expenditure, 15% was where the difference between the proportion of two groups were the greatest and 25% and 55% were respectively approximately where the derivative of the proportion of SAT and DOT groups rose to -0.2.</p>
+<p>Note that visually driven determination of the threshold increases a serious risk of p-hacking, which I have brought up and explained to the client. However, the pragmatic interpretability and the straightforward statistical methodology of the chi-square test appealed to the client, whose objective was to test if there was a change in behavior and not to identify the exact point of change.</p>
+</div>
+<div id="the-analysis" class="section level3">
+<h3>the Analysis</h3>
+<p>Once the thresholds were decided, the analysis was simple. The method was to identify the patients who fell over or under the threshold and conduct a simple chi-squared test for each given threshold. The results are summarized below.</p>
+<table>
+<colgroup>
+<col width="17%" />
+<col width="15%" />
+<col width="10%" />
+<col width="9%" />
+<col width="10%" />
+<col width="12%" />
+<col width="23%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th align="left">Threshold (%)</th>
+<th align="center">Treatment</th>
+<th align="right">Below</th>
+<th align="right">Above</th>
+<th align="right">Total</th>
+<th align="right">% Above</th>
+<th align="right">Chi-squared p-value</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">15</td>
+<td align="center">DOT</td>
+<td align="right">874</td>
+<td align="right">326</td>
+<td align="right">1200</td>
+<td align="right">27.2%</td>
+<td align="right">0.089</td>
+</tr>
+<tr class="even">
+<td align="left"></td>
+<td align="center">SAT</td>
+<td align="right">912</td>
+<td align="right">288</td>
+<td align="right">1200</td>
+<td align="right">24.0%</td>
+<td align="right"></td>
+</tr>
+<tr class="odd">
+<td align="left">25</td>
+<td align="center">DOT</td>
+<td align="right">673</td>
+<td align="right">527</td>
+<td align="right">1200</td>
+<td align="right">43.9%</td>
+<td align="right">0.0023</td>
+</tr>
+<tr class="even">
+<td align="left"></td>
+<td align="center">SAT</td>
+<td align="right">892</td>
+<td align="right">308</td>
+<td align="right">1200</td>
+<td align="right">25.7%</td>
+<td align="right"></td>
+</tr>
+<tr class="odd">
+<td align="left">55</td>
+<td align="center">DOT</td>
+<td align="right">982</td>
+<td align="right">218</td>
+<td align="right">1200</td>
+<td align="right">18.2%</td>
+<td align="right">0.071</td>
+</tr>
+<tr class="even">
+<td align="left"></td>
+<td align="center">SAT</td>
+<td align="right">1047</td>
+<td align="right">153</td>
+<td align="right">1200</td>
+<td align="right">12.8%</td>
+<td align="right"></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div id="the-result" class="section level3">
+<h3>the Result</h3>
+<p>The most striking finding was at the 25% threshold, a critical “tipping point” where patient behavior showed a significant shift. When treatment costs exceeded 25% of annual income, we saw a marked increase in patients choosing the remote treatment (SAT).</p>
+</div>
+</div>
+<div id="discussion" class="section level2">
+<h2>Discussion</h2>
+<div id="practical-implications" class="section level3">
+<h3>Practical Implications</h3>
+<p>For healthcare providers and policymakers, these findings suggest several key points:</p>
+<ol style="list-style-type: decimal">
+<li>The 25% threshold might serve as a useful benchmark, especially for designing financial assistance programs.</li>
+<li>Different intervention strategies might be needed for patients above and below the 25% threshold.</li>
+<li>Treatment cost should be a core part of the communication held with the patient, and may need to be framed differently when the threshold is met.</li>
+</ol>
+</div>
+<div id="limitations-and-considerations" class="section level3">
+<h3>Limitations and Considerations</h3>
+<p>These findings are compelling, but it is wise to acknowledge the limitations of the methodology and assumptions made.</p>
+<p>Regional and population variations might affect these thresholds. It is important to consider our sample, which are that of HIV-infected populations in Uganda.
+The analysis does not account for factors outside of cost, which was our main variable of concern. (Covariate Analysis)
+<abbr title="effect of an independent variable on a dependent variable cannot be casually interpreted because it includes omitted causes">Endogeneity</abbr> is a huge concern. Treatment costs and income likely have complex bidirectional relationships with treatment choice, and are not accounted for in this simplified analysis.</p>
+</div>
+<div id="looking-forward" class="section level3">
+<h3>Looking forward</h3>
+<p>As with most research, our work here opens up new intriguing questions for future research. How do these thresholds vary for different medical conditions? For different comorbidities? For different populations? Will they shift when healthcare policies are changed?</p>
+<p>With that, check back the future posts for follow-up analysis regarding the covariate analysis and the continuous approach to the threshold analysis that aims to identify the “true” point at which patient behaviors change.</p>
+</div>
+</div>
