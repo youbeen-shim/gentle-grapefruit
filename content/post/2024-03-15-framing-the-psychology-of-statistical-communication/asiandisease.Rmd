@@ -1,0 +1,151 @@
+---
+title: Framing & the psychology of statistical communication
+author: Youbeen Shim
+date: '2024-03-15'
+slug: framing-the-psychology-of-statistical-communication
+categories: []
+tags: []
+---
+
+## Lessons from the Asian Disease Problem
+
+For being a statistics nerd, behavioral economics happens to be a subject that I am keenly interested in. The intersection of psychology and rational decision making makes for some very interesting experiment design and discovery.
+
+One of my favorite experiments is the <abbr title="no, not because i am asian">Asian Disease Problem</abbr> developed by [Tversky and Kahneman](https://www.science.org/doi/10.1126/science.7455683) in 1981. It often is the first thing that comes to mind when I prepare data presentations, as it perfectly illustrates how framing can dramatically influence decision-making - **even when the underlying statistics are identical**.
+
+## the Experiment
+
+The experiment presented participants with a choice: 
+
+> Imagine that the U.S. is preparing for the outbreak of an unusual Asian disease, which is expected to kill 600 people. Two alternative programs to combat the disease have been proposed. Assume that the exact scientific estimates of the consequences of the programs are as follows.
+
+One group of subjects was presented with the following pair of alternatives (the percentage of respondents choosing a given program is given in parentheses):
+
+* If Program A is adopted, 200 people will be saved (72 percent)
+* If Program B is adopted, there is a one-third probability that 600 people will be saved and a two-thirds probability that no people will be saved (28 percent)
+
+Another group of subjects were instead offered the following alternatives:
+
+* If Program C is adopted, 400 people will die (22 percent)
+* If Program D is adp[ted, there is a one-third probability that nobody will die and a two-thirds probability that 600 people will die (78 percent)
+
+
+## Let’s break down why this happens
+
+### Expected Value
+
+In both scenarios, the expected value is identical:
+For Program A & C: 
+$$E(A) = 200 \text{ saved} = 400 \text{ deaths}$$
+For Program B & D:  
+$$E(B) = \frac{1}{3}(600) + \frac{2}{3}(0) = 200 \text{ saved} = 400 \text{ deaths}$$
+
+### Prospect Theory 
+
+However, <abbr title="admittedly not my forte either">Prospect Theory</abbr> tells us that people’s utility functions aren’t linear - they are typically concave for gains and convex for losses. This can be mathematically represented with a value function $v(x)$ where:
+$$ v(x) = \begin{cases} x^\alpha & \text{if } x \geq 0 \ -\lambda(-x)^\beta & \text{if } x < 0 \end{cases} $$
+where:
+
+* $\alpha, \beta$ represent the curvature of the value function
+* $\lambda$ represents loss aversion
+* $x$ is the change from the reference point
+
+### So what?
+
+The takeaway is simply that the reference point matters, enormously. When we frame outcomes in terms of lives saved, the reference point is zero lives saved, making all outcomes feel like gains. When we frame in terms of deaths, the reference point shifts to make all outcomes feel like losses. 
+
+This leads to a (<abbr title="for the general population, not the individual">predictable</abbr>) pattern in decision-making:
+
+1. Risk-averse behavior in the domain of gains (prefer to not “risk” lives)
+2. Risk-seeking behavior in the domain of losses (prefer to take a chance to “save” lives)
+
+This is manifested again and again in statistical consulting when presenting things such as:
+
+* Confidence intervals (±10% vs specific bounds)
+* Effect sizes (improvement from baseline vs distance to ideal)
+* Probability estimates (chance of success vs chance of failure)
+
+This brings us to a key insight for you, the presenter: **the question isn't just "what are the numbers?" but "how do we frame them?"**. And perhaps more importantly, **how do we ensure our framing doesn't inadvertently bias decision-making?**
+
+## Practical Applications
+
+I hope you can see how understanding framing effects fundamentally changes how we should approach data presentation, or really any situation where statistical discussion is involved. Here are some strategies I have implemented in my practice:
+
+### Data Presentation
+
+When presenting A/B test results to stakeholders, I now automatically include multiple frames. For instance, when testing new recommendation algorithm, naturally, engagement metric is our primary metric. We can define our baseline engagement rate as $e_b$ and new engagement rate as $e_n$.
+
+The positive frame focuses on relative improvement:
+$$\text{Improvement} = \frac{e_n - e_b}{e_b} \times 100%$$
+For example, if baseline engagement was 20% and new engagement is 25%, we can frame this as "a 25% improvement in engagement."
+
+However, this same data can be expressed through a negative frame:
+$$\text{Non-engagement} = (1 - e_n) \times 100%$$
+
+In this context, "75% of sessions still show no interaction." Both statements are mathematically equivalent but trigger different psychological responses.
+
+See that neither frame is *wrong* - they are complementary perspectives. In my life as a data scientist, I have noticed that product managers tend to focus on improvements (gains frame), while risk management teams focus on potential issues (loss frame). It is a natural consequence of their position in the company, but I consider it my job to expand their perspective and help stakeholders make better decisions. Speaking of which:
+
+### Stakeholder Psychology
+
+Framing sensitivity varies by role.
+
+* Executives often respond strongly to competitor-referenced frames;
+* Technical teams prefer absolute metrics, with confidence intervals;
+* I have better engagement from product teams when I present user-centered frames; and
+* Finance teams focus on risk & return, making risk-adjusted return a valuable frame
+
+### Personal Work
+
+I am not free from the framing bias. 
+
+Recently, I created a client churn prediction model which had 84.2% accuracy by leveraging untapped, unstructured data that I featurized and incorporated into our legacy model. Initially, this seemed impressive. However, reframing it as *“we are still misclassifying 16.8% of our customers”* led to valuable discussions with my team about the cost of false positives versus false negatives, and how to improve our input feature quality. 
+
+## Implementation Framework
+
+Hopefully by now I have convinced you that **a) the effect of framing is enormous** and **b) it is our job as a statistician/data scientist to develop practices that combat bias**. Below are some frameworks to help you get started:
+
+### Communication Protocols
+
+I use the following communication guidelines when generating summaries, especially when generating reports that are submitted to executives.
+
+1. Dual Presentation
+    * Present both gain and loss frames
+    * Show both absolute and relative changes
+    * Include confidence intervals
+2. Context Integration
+    * Incorporate historical performance metrics
+    * Use industry benchmarks
+    * Whenever possible, show the relationship between cost and benefit
+3. Visualization Check
+    * Do axes start at zero when appropriate?
+    * Are color schemes neutral?
+    * Are uncertainties visually incorporated?
+
+### (Balanced) Reporting Template
+
+This is a (simplified) template that I used to standardize my combat against framing bias. 
+
+
+```{r}
+create_report <- function(data, metric, baseline) {
+  abs_change <- metric - baseline
+  rel_change <- (metric - baseline)/baseline
+  
+  list(
+    absolute = list(
+      positive = abs_change,
+      negative = -abs_change
+    ),
+    relative = list(
+      improvement = rel_change * 100,
+      decline_prevented = (1 - abs(rel_change)) * 100
+    ),
+    confidence = calculate_confidence_intervals(data)
+  )
+}
+```
+
+This systematic approach aids in my effort to make sure that my statistical communication remains both accurate and balanced. By implementing these frameworks, we can maintain technical rigor while presenting results in a way that facilitates better decision making. Our goal is not to eliminate framing effects. They are an internet part of human cognition that cannot be removed. Instead, we should aim to harness them responsibly for more effective statistical communication.
+
+That's it for today, no key takeaways but rather a long list of "things that I do". Sometimes that's life! I'll see you next time.

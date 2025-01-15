@@ -1,0 +1,151 @@
+---
+title: Framing & the psychology of statistical communication
+author: Youbeen Shim
+date: '2024-03-15'
+slug: framing-the-psychology-of-statistical-communication
+categories: []
+tags: []
+---
+
+
+
+<div id="lessons-from-the-asian-disease-problem" class="section level2">
+<h2>Lessons from the Asian Disease Problem</h2>
+<p>For being a statistics nerd, behavioral economics happens to be a subject that I am keenly interested in. The intersection of psychology and rational decision making makes for some very interesting experiment design and discovery.</p>
+<p>One of my favorite experiments is the <abbr title="no, not because i am asian">Asian Disease Problem</abbr> developed by <a href="https://www.science.org/doi/10.1126/science.7455683">Tversky and Kahneman</a> in 1981. It often is the first thing that comes to mind when I prepare data presentations, as it perfectly illustrates how framing can dramatically influence decision-making - <strong>even when the underlying statistics are identical</strong>.</p>
+</div>
+<div id="the-experiment" class="section level2">
+<h2>the Experiment</h2>
+<p>The experiment presented participants with a choice:</p>
+<blockquote>
+<p>Imagine that the U.S. is preparing for the outbreak of an unusual Asian disease, which is expected to kill 600 people. Two alternative programs to combat the disease have been proposed. Assume that the exact scientific estimates of the consequences of the programs are as follows.</p>
+</blockquote>
+<p>One group of subjects was presented with the following pair of alternatives (the percentage of respondents choosing a given program is given in parentheses):</p>
+<ul>
+<li>If Program A is adopted, 200 people will be saved (72 percent)</li>
+<li>If Program B is adopted, there is a one-third probability that 600 people will be saved and a two-thirds probability that no people will be saved (28 percent)</li>
+</ul>
+<p>Another group of subjects were instead offered the following alternatives:</p>
+<ul>
+<li>If Program C is adopted, 400 people will die (22 percent)</li>
+<li>If Program D is adp[ted, there is a one-third probability that nobody will die and a two-thirds probability that 600 people will die (78 percent)</li>
+</ul>
+</div>
+<div id="lets-break-down-why-this-happens" class="section level2">
+<h2>Let’s break down why this happens</h2>
+<div id="expected-value" class="section level3">
+<h3>Expected Value</h3>
+<p>In both scenarios, the expected value is identical:
+For Program A &amp; C:
+<span class="math display">\[E(A) = 200 \text{ saved} = 400 \text{ deaths}\]</span>
+For Program B &amp; D:<br />
+<span class="math display">\[E(B) = \frac{1}{3}(600) + \frac{2}{3}(0) = 200 \text{ saved} = 400 \text{ deaths}\]</span></p>
+</div>
+<div id="prospect-theory" class="section level3">
+<h3>Prospect Theory</h3>
+<p>However, <abbr title="admittedly not my forte either">Prospect Theory</abbr> tells us that people’s utility functions aren’t linear - they are typically concave for gains and convex for losses. This can be mathematically represented with a value function <span class="math inline">\(v(x)\)</span> where:
+<span class="math display">\[ v(x) = \begin{cases} x^\alpha &amp; \text{if } x \geq 0 \ -\lambda(-x)^\beta &amp; \text{if } x &lt; 0 \end{cases} \]</span>
+where:</p>
+<ul>
+<li><span class="math inline">\(\alpha, \beta\)</span> represent the curvature of the value function</li>
+<li><span class="math inline">\(\lambda\)</span> represents loss aversion</li>
+<li><span class="math inline">\(x\)</span> is the change from the reference point</li>
+</ul>
+</div>
+<div id="so-what" class="section level3">
+<h3>So what?</h3>
+<p>The takeaway is simply that the reference point matters, enormously. When we frame outcomes in terms of lives saved, the reference point is zero lives saved, making all outcomes feel like gains. When we frame in terms of deaths, the reference point shifts to make all outcomes feel like losses.</p>
+<p>This leads to a (<abbr title="for the general population, not the individual">predictable</abbr>) pattern in decision-making:</p>
+<ol style="list-style-type: decimal">
+<li>Risk-averse behavior in the domain of gains (prefer to not “risk” lives)</li>
+<li>Risk-seeking behavior in the domain of losses (prefer to take a chance to “save” lives)</li>
+</ol>
+<p>This is manifested again and again in statistical consulting when presenting things such as:</p>
+<ul>
+<li>Confidence intervals (±10% vs specific bounds)</li>
+<li>Effect sizes (improvement from baseline vs distance to ideal)</li>
+<li>Probability estimates (chance of success vs chance of failure)</li>
+</ul>
+<p>This brings us to a key insight for you, the presenter: <strong>the question isn’t just “what are the numbers?” but “how do we frame them?”</strong>. And perhaps more importantly, <strong>how do we ensure our framing doesn’t inadvertently bias decision-making?</strong></p>
+</div>
+</div>
+<div id="practical-applications" class="section level2">
+<h2>Practical Applications</h2>
+<p>I hope you can see how understanding framing effects fundamentally changes how we should approach data presentation, or really any situation where statistical discussion is involved. Here are some strategies I have implemented in my practice:</p>
+<div id="data-presentation" class="section level3">
+<h3>Data Presentation</h3>
+<p>When presenting A/B test results to stakeholders, I now automatically include multiple frames. For instance, when testing new recommendation algorithm, naturally, engagement metric is our primary metric. We can define our baseline engagement rate as <span class="math inline">\(e_b\)</span> and new engagement rate as <span class="math inline">\(e_n\)</span>.</p>
+<p>The positive frame focuses on relative improvement:
+<span class="math display">\[\text{Improvement} = \frac{e_n - e_b}{e_b} \times 100%\]</span>
+For example, if baseline engagement was 20% and new engagement is 25%, we can frame this as “a 25% improvement in engagement.”</p>
+<p>However, this same data can be expressed through a negative frame:
+<span class="math display">\[\text{Non-engagement} = (1 - e_n) \times 100%\]</span></p>
+<p>In this context, “75% of sessions still show no interaction.” Both statements are mathematically equivalent but trigger different psychological responses.</p>
+<p>See that neither frame is <em>wrong</em> - they are complementary perspectives. In my life as a data scientist, I have noticed that product managers tend to focus on improvements (gains frame), while risk management teams focus on potential issues (loss frame). It is a natural consequence of their position in the company, but I consider it my job to expand their perspective and help stakeholders make better decisions. Speaking of which:</p>
+</div>
+<div id="stakeholder-psychology" class="section level3">
+<h3>Stakeholder Psychology</h3>
+<p>Framing sensitivity varies by role.</p>
+<ul>
+<li>Executives often respond strongly to competitor-referenced frames;</li>
+<li>Technical teams prefer absolute metrics, with confidence intervals;</li>
+<li>I have better engagement from product teams when I present user-centered frames; and</li>
+<li>Finance teams focus on risk &amp; return, making risk-adjusted return a valuable frame</li>
+</ul>
+</div>
+<div id="personal-work" class="section level3">
+<h3>Personal Work</h3>
+<p>I am not free from the framing bias.</p>
+<p>Recently, I created a client churn prediction model which had 84.2% accuracy by leveraging untapped, unstructured data that I featurized and incorporated into our legacy model. Initially, this seemed impressive. However, reframing it as <em>“we are still misclassifying 16.8% of our customers”</em> led to valuable discussions with my team about the cost of false positives versus false negatives, and how to improve our input feature quality.</p>
+</div>
+</div>
+<div id="implementation-framework" class="section level2">
+<h2>Implementation Framework</h2>
+<p>Hopefully by now I have convinced you that <strong>a) the effect of framing is enormous</strong> and <strong>b) it is our job as a statistician/data scientist to develop practices that combat bias</strong>. Below are some frameworks to help you get started:</p>
+<div id="communication-protocols" class="section level3">
+<h3>Communication Protocols</h3>
+<p>I use the following communication guidelines when generating summaries, especially when generating reports that are submitted to executives.</p>
+<ol style="list-style-type: decimal">
+<li>Dual Presentation
+<ul>
+<li>Present both gain and loss frames</li>
+<li>Show both absolute and relative changes</li>
+<li>Include confidence intervals</li>
+</ul></li>
+<li>Context Integration
+<ul>
+<li>Incorporate historical performance metrics</li>
+<li>Use industry benchmarks</li>
+<li>Whenever possible, show the relationship between cost and benefit</li>
+</ul></li>
+<li>Visualization Check
+<ul>
+<li>Do axes start at zero when appropriate?</li>
+<li>Are color schemes neutral?</li>
+<li>Are uncertainties visually incorporated?</li>
+</ul></li>
+</ol>
+</div>
+<div id="balanced-reporting-template" class="section level3">
+<h3>(Balanced) Reporting Template</h3>
+<p>This is a (simplified) template that I used to standardize my combat against framing bias.</p>
+<pre class="r"><code>create_report &lt;- function(data, metric, baseline) {
+  abs_change &lt;- metric - baseline
+  rel_change &lt;- (metric - baseline)/baseline
+  
+  list(
+    absolute = list(
+      positive = abs_change,
+      negative = -abs_change
+    ),
+    relative = list(
+      improvement = rel_change * 100,
+      decline_prevented = (1 - abs(rel_change)) * 100
+    ),
+    confidence = calculate_confidence_intervals(data)
+  )
+}</code></pre>
+<p>This systematic approach aids in my effort to make sure that my statistical communication remains both accurate and balanced. By implementing these frameworks, we can maintain technical rigor while presenting results in a way that facilitates better decision making. Our goal is not to eliminate framing effects. They are an internet part of human cognition that cannot be removed. Instead, we should aim to harness them responsibly for more effective statistical communication.</p>
+<p>That’s it for today, no key takeaways but rather a long list of “things that I do”. Sometimes that’s life! I’ll see you next time.</p>
+</div>
+</div>
