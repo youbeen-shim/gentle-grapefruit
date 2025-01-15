@@ -1,5 +1,5 @@
 ---
-title: shapviz & Shapley Additive Explanations
+title: Model interpretability and Shapley Additive Explanations (feat. shapviz)
 author: Youbeen Shim
 date: '2023-09-15'
 slug: shapviz-shapley-additive-explanations
@@ -9,3 +9,93 @@ tags: []
 
 
 
+<p>As a modeler, it is often tempting to use the most cutting-edge model that gives the best performance. This is fine as long as the model is properly supported by backtesting, updates, and regular data quality assurance checks. However, the situation changes when working with business stakeholders and decision makers. Issue is this: <strong>the more sophisticated the models become, the harder they are to explain</strong>.</p>
+<p>This was the same problem that I ran into when building a model to predict the sale price of homes in the San Francisco &amp; Bay Area. I built an optimized model leveraging unconventional data sources that I gathered through my brother’s web scraping tool, but I was stuck when I tried to answer a simple question from him: “This house looks like the best option for us, but why exactly did your model predict this house would sell for $50,000 above the neighborhood average? Zillow’s proprietary model doesn’t seem to agree with you.”</p>
+<p>This is a <abbr title="mostly because he didn’t actually ask it, I made it up for the sake of the narrative">great question</abbr> for today. How do we navigate between the growing tension between model complexity and interpretability? One answer: Shapley Values.</p>
+<div id="understanding-shap-values" class="section level2">
+<h2>Understanding SHAP Values</h2>
+<p>Let’s start with an analogy that I often use when I am called to explain SHAP values. Imagine this: a team of real estate agents worked tirelessly to sell a house; at the end of the month, they gather to divide their commission - some did more showings, others did more paperwork, and few were dedicated to negotiations with buyers and sellers. How do we fairly attribute the success of the sale to each agent’s contribution?</p>
+<p>This is the crux of what SHAP values do. Just as we humans want to fairly distribute credit among our work, SHAP values help us understand how each feature contributes to a model’s prediction.</p>
+<p>While SHAP values get a lot of use in the machine learning space, the mathematical foundation comes from <a href="http://www.coalitiontheory.net/research-areas/cooperative-game-theory">cooperative game theory</a>. If you are so <abbr title="and because I want to show off my LaTeX skills whenever I get the chance">mathematically inclined</abbr>, the Shapley value for feature <span class="math inline">\(i\)</span> is defined as:
+<span class="math display">\[ \phi_i = \sum_{S \subseteq F \setminus {i}} \frac{|S|!(|F|-|S|-1)!}{|F|!}[f_x(S \cup {i}) - f_x(S)] \]</span>
+where:</p>
+<ul>
+<li><span class="math inline">\(F\)</span> is the set of all features</li>
+<li><span class="math inline">\(S\)</span> is a subset of features</li>
+<li><span class="math inline">\(f_x(S)\)</span> is the model’s prediction using only features in set <span class="math inline">\(S\)</span></li>
+</ul>
+<p>But if you aren’t so keen on math, don’t let the formula intimidate you. Just know this, SHAP values:</p>
+<ol style="list-style-type: decimal">
+<li>Add up to the difference between the model’s prediction and the average prediction</li>
+<li>Are consistent and fair in attributing feature importance</li>
+<li>Have solid theoretical foundations</li>
+</ol>
+</div>
+<div id="implementation" class="section level2">
+<h2>Implementation</h2>
+<p>Now, let’s solidify our understanding with R. I’ll be using the Boston housing dataset from the tidyverse package as an example in lieu of my (brother’s) proprietary data.</p>
+<pre class="r"><code>library(shapviz)
+library(xgboost)
+library(tidyverse)
+
+# using boston housing data
+data(Boston, package = &quot;MASS&quot;)
+X &lt;- as.matrix(Boston[, -14])  # X has all features except the median value
+y &lt;- Boston$medv              # target (y) = median value
+
+model &lt;- xgboost(
+  data = X,
+  label = y,
+  nrounds = 100,
+  objective = &quot;reg:squarederror&quot;,
+  verbose = 0
+)
+
+# calculate SHAP values
+shap &lt;- shapviz(model, X_pred = X)</code></pre>
+<p>The code is really that simple. The beauty of shapviz is how it simplifies the process of generating and visualizing SHAP values. Now, for visualizations:</p>
+<p>First, feature importance. Much like feature importance and permutation importance in other tree based machine learning algorithms, SHAP also has the ability to generate feature importance plots.</p>
+<pre class="r"><code>sv_importance(shap, kind = &quot;bar&quot;)</code></pre>
+<p><img src="/post/2023-09-15-shapviz-shapley-additive-explanations/shapviz_files/figure-html/unnamed-chunk-2-1.png" width="672" /></p>
+<p>However, feature importance still carries its key weakness: it can show how important a single feature is, but it does not show the relationship between the feature and the target. This is where SHAP’s beeswarm summary plot shines.</p>
+<pre class="r"><code>sv_importance(shap, kind = &quot;beeswarm&quot;)</code></pre>
+<p><img src="/post/2023-09-15-shapviz-shapley-additive-explanations/shapviz_files/figure-html/unnamed-chunk-3-1.png" width="672" /></p>
+<p>Finally, by using the sv_dependence() function, you can create a scatterplot of the SHAP values of a feature against its feature values. Note that, by default, the feature on the color scale is selected via SHAP interactions (if available) or an <a href="https://rdrr.io/cran/shapviz/src/R/sv_dependence.R">interaction heuristic</a>.</p>
+<pre class="r"><code>interesting_xvars &lt;- c(&quot;lstat&quot;, &quot;rm&quot;, &quot;dis&quot;, &quot;age&quot;)
+sv_dependence(shap, v = interesting_xvars)</code></pre>
+<p><img src="/post/2023-09-15-shapviz-shapley-additive-explanations/shapviz_files/figure-html/unnamed-chunk-4-1.png" width="672" /></p>
+</div>
+<div id="back-to-the-original-question" class="section level2">
+<h2>Back to the original question</h2>
+<p>Similar to the question that my brother asked, “why exactly did your model predict this house would sell for $50,000 above the neighborhood average?” stakeholders often benefit from understanding how certain model predictions came to be. The shapviz package helps us decompose single predictions with either a waterfall or force plot:</p>
+<pre class="r"><code>interesting_house &lt;- 45  # a house with surprising prediction
+sv_waterfall(shap, row_id = interesting_house)</code></pre>
+<p><img src="/post/2023-09-15-shapviz-shapley-additive-explanations/shapviz_files/figure-html/unnamed-chunk-5-1.png" width="672" /></p>
+<pre class="r"><code>sv_force(shap, row_id = interesting_house)</code></pre>
+<p><img src="/post/2023-09-15-shapviz-shapley-additive-explanations/shapviz_files/figure-html/unnamed-chunk-5-2.png" width="672" />
+These charts show that, while the model predicted a price $50,000 above average, it wasn’t just because of location (lstat) or size (rm). The interaction between these features tell a more nuanced story.</p>
+</div>
+<div id="things-you-should-worry-about" class="section level2">
+<h2>Things you should worry about</h2>
+<p>After using SHAP values to back up my models, there are some key lessons I want to share:</p>
+<ol style="list-style-type: decimal">
+<li>Computational Cost: For very large datasets, calculating SHAP values for every prediction can be <abbr title="throwback to my early days when I would wait 3+ hours waiting for R to finish">computationally expensive</abbr>. A good practice is to sample a representative subset for <a href="https://www.blog.trainindata.com/machine-learning-interpretability/">global</a> <a href="https://arxiv.org/html/2406.02981v1">interpretability</a> analysis.</li>
+<li>Feature Independence: SHAP values assume feature independence, and as you already know, this is not always true in real-world data. In our housing example, square footage and number of rooms are clearly correlated. It is important to mitigate this, or at least explain to stakeholders to keep this in mind as they digest your outputs.</li>
+<li>Interpretation Challenges: While SHAP values are mathematically sound, explaining them to non-technical stakeholders requires careful framing. I’ve found that, just like what I did in this blogpost, starting with concrete examples helps to build intuition.</li>
+</ol>
+</div>
+<div id="afterthought" class="section level2">
+<h2>Afterthought</h2>
+<div id="why-spend-time-on-interpretability" class="section level3">
+<h3>Why spend time on interpretability?</h3>
+<p>It is easy for model interpretability to be an afterthought. I must admit that I have often fallen into the pitfall of looking into model interpretability methods after I created a model that I am satisfied with to meet regulatory requirements or stakeholder curiosity. In reality, model interpretability is about building trust in our models and allowing us to make better decisions. SHAP values, especially when combined with key visualizations with tools like shapviz, provide a powerful framework for understanding model predictions.</p>
+<p>In my experience, I’ve found that the time invested in proper model interpretation often pays dividends in stakeholder trust and model adoption. After all, all models are inaccurate, some models are just more useful than others - and <strong>a model is only as good as our ability to understand and explain its decisions</strong>.</p>
+</div>
+</div>
+<div id="reference" class="section level2">
+<h2>Reference</h2>
+<div id="this-is-great-but-i-want-a-better-overview-please" class="section level3">
+<h3>This is great, but I want a better overview (please)</h3>
+<p>Look into this fantastic write-up that <a href="https://proceedings.neurips.cc/paper_files/paper/2017/file/8a20a8621978632d76c43dfd28b67767-Paper.pdf">introduces SHAP by Scott M. Lundberg and Su-In Lee</a>. As well as this overview <a href="https://cran.r-project.org/web/packages/shapviz/vignettes/basic_use.html">“Using ‘shapviz’”</a> by the shapviz package author Michael Mayer.</p>
+</div>
+</div>
