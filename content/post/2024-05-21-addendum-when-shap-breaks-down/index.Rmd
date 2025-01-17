@@ -1,0 +1,116 @@
+---
+title: 'Addendum: When SHAP Breaks Down'
+author: Youbeen Shim
+date: '2024-05-21'
+slug: addendum-when-shap-breaks-down
+categories: []
+tags: []
+---
+
+Not too long ago, I made a post about SHAP analysis and its use cases. While I still maintain that Shapley Additive Explanations are a very useful tool that every statistician should have in their toolbox, I want to share my mistake on over-relying on them, leading to a critical blind spot in my analysis. 
+
+In my previous job as a data scientist in the financial services section, one of my brainchildren was the customer churn model. Our model was showing excellent performance metrics, and in our semi-annual review, I confidently presented the model along with SHAP values to explain individual predictions. Then came the curve ball: “If these two features are so important,” the staff engineer on my team asked nonchalantly, “why does our A/B testing show minimal impact when we intervene on them directly?”
+
+This started a rabbit hole of investigations that revealed several critical blind spots in my approach to model interpretation. Today, we will be going over these insights, <abbr title="(spective)">retro</abbr> style.
+
+## When SHAP Breaks Down
+
+### High correlation between features
+
+Imagine that you are tasked to build a model that predicts a customers’ lifetime value (CLV). Naturally, you will gravitate towards features such as *'total_purchases'*, *'average_order_value'*, and *'purchase_frequency'*. Somewhat obviously, these features are correlated - total purchases and purchase frequency both tell similar stories about customer behavior. 
+
+TODO: solidify the below code 
+r
+Copy
+# Simulating correlated features
+set.seed(123)
+n <- 1000
+purchase_freq <- rnorm(n)
+total_purchases <- purchase_freq + rnorm(n, sd = 0.1)  # Highly correlated
+avg_order_value <- rnorm(n)  # Independent
+
+# Creating target variable
+clv <- 2 * purchase_freq + 0.5 * avg_order_value + rnorm(n, sd = 0.1)
+
+# Checking correlation
+cor(purchase_freq, total_purchases)  # Typically > 0.9
+
+TODO: find the compromise between the following two write-up
+
+Problem with highly correlated features is that it consequently violates the feature independence assumption and leads to the SHAP values becoming unstable/less reliable. For correlated features $i$ and $j$, the marginal contribution of feature $i$ depends heavily on whether $j$ is in the coalition $S$:
+$$ f_x(S \cup {i} | j \in S) \neq f_x(S \cup {i} | j \notin S) $$
+Practically, this leads to issues such as:
+Attribution being split arbitrarily between correlated features
+Inconsistent explanations across similar instances
+Misleading feature importance rankings
+The mathematical reason lies in how SHAP handles feature coalitions. For correlated features $X_1$ and $X_2$, the marginal contribution calculation:
+$$ \phi_i = \sum_{S \subseteq F \setminus {i}} \frac{|S|!(|F|-|S|-1)!}{|F|!}[f_x(S \cup {i}) - f_x(S)] $$
+becomes unstable because $f_x(S \cup {X_1})$ and $f_x(S \cup {X_2})$ are essentially measuring the same effect.
+### Time Series
+
+Again, in cases where the features have temporal dependencies, the feature independence assumption is violated. When we calculate SHAP values for a time-dependent feature, we implicitly assume that each time point’s features can be considered independently. However, it is common for today’s prediction to be heavily influenced by yesterday’s values. This leads to the same issues when calculating marginal contribution of features as we have seen in the above example.
+
+TODO: solidify the following code
+1. Time Series Dependencies
+```r
+# Example: Financial returns data
+returns_data <- data.frame(
+  returns = rnorm(100),
+  lag1 = lag(returns, 1),
+  lag2 = lag(returns, 2)
+)
+```
+
+While it is redundant, it was worth highlighting as temporal dependencies are surprisingly pervasive in real-life scenarios. Methods like Integrated Gradients or attention-based interpretability methods may be more appropriate.  
+
+### Interaction Effects
+
+Interaction effects are similar to scenarios where there is high correlation between features, but it is perhaps higher-order. This is because, similar to high correlation, interaction between features causes the marginal contribution to become murkier. However, unlike correlation, interaction effects can be non-linear and could be inherently joint in its effect.
+
+Consider a simple example: in the house sale price prediction model that I built, one of the features that I utilize is ‘has_pool’. Intuitively, a pool will increase the value of a home. However, further analysis showed that while pool adds significant value to a home in a warm climate, it actually reduced the value of a home in Northwestern America, where the climate tends to be colder and labor costs tend to be higher. The SHAP value for ‘has_pool’ alone fails to capture the complete story. 
+
+As can be seen in our pool example, the fundamental challenge is that our tools for model interpretation often assume additivity, when real-world circumstances are inherently interactive. This is especially true for situations where us, the modeling experts, are called on to model a complex system.
+I do the following when attempting to unwind the complex knot that are interaction effects:
+Start with domain knowledge to identify likely interactions
+Use computational shortcuts to screen for unexpected interactions
+Validate discovered interactions with subject matter experts
+Consider whether the interactions are stable across different subsets of data (cross-validate)
+Below framework is the simplified version of what I do for Step 2. Note that in practice, utilizing cross-validation has higher computational cost but yields more reliable results.
+# Function to detect potential interactions
+detect_interactions <- function(X, y, model) {
+  n_features <- ncol(X)
+  interaction_scores <- matrix(0, n_features, n_features)
+  
+  for(i in 1:(n_features-1)) {   # Iterate through feature pairs
+    for(j in (i+1):n_features) {
+      # Calculate prediction residuals with and without interaction term
+      resid_main <- residuals(model)
+      resid_interact <- residuals(update(model, . ~ . + X[,i]:X[,j]))
+      
+      # Score improvement in residuals
+      interaction_scores[i,j] <- var(resid_main) - var(resid_interact)
+    }
+  }
+  return(interaction_scores)
+}
+
+
+### Causality Trap
+
+Correlation does not mean causation. This is something that you are taught early on and repeated again and again throughout your educational journey. However, when presenting SHAP values, it is easy for stakeholders to misattribute it to be a causal relationship. 
+
+For example, in my analysis of patients who were receiving a treatment that involved a cocktail of antibiotics for their nontuberculous mycobacterial (NTM) infections, SHAP analysis revealed that these patients suffered worse outlook on life and reported lower quality of life. However, it is important to be mindful of this crucial context: sicker patients are more likely to receive the treatment in the first place. 
+
+It is crucial to be very explicit about the fact that SHAP values are fundamentally correlational in nature.
+
+### Computational Limitations 
+
+As I have briefly discussed in my previous post, SHAP value computation is not an optimized algorithm. With a dataset of n samples and p features, exact SHAP value computation requires considering $2^p$ possible feature combinations. This type of exponential growth very quickly hits the computational ceiling of an individual processor, and is also a high-priority concern in multi-processor server or cloud computing scenarios. 
+
+In high-dimensional datasets (genomics or natural language processing comes to mind, but even 20+ features will start to show warning signs), calculating exact SHAP values becomes computationally infeasible. While approximation methods exist, they come with their own trade-offs, generally in its accuracy and/or reliability.
+
+
+## Parting Notes
+
+Shapley values are both powerful and useful, but as with most things, are not a silver bullet for model interpretation. They are simply just another tool in our toolbox, and knowing when not to use them is just as important as knowing how to use them effectively. 
+
