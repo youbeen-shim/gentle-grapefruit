@@ -16,86 +16,145 @@ tags: []
 <h2>When SHAP Breaks Down</h2>
 <div id="high-correlation-between-features" class="section level3">
 <h3>High correlation between features</h3>
-<p>Imagine that you are tasked to build a model that predicts a customers’ lifetime value (CLV). Naturally, you will gravitate towards features such as <em>‘total_purchases’</em>, <em>‘average_order_value’</em>, and <em>‘purchase_frequency’</em>. Somewhat obviously, these features are correlated - total purchases and purchase frequency both tell similar stories about customer behavior.</p>
-<p>TODO: solidify the below code
-r
-Copy
-# Simulating correlated features
-set.seed(123)
+<p>Imagine that you are tasked to build a model that predicts a customers’ lifetime value (CLV). Naturally, you will gravitate towards features such as <em>‘total_purchases’</em>, <em>‘average_order_value’</em>, and <em>‘purchase_frequency’</em>. Somewhat obviously, these features are correlated - total purchases and purchase frequency both tell similar stories about customer behavior. Let’s explore what happens when the features are highly correlated.</p>
+<p>First, we’ll simulate some data.</p>
+<pre class="r"><code>library(tidyverse)
+library(xgboost)
+library(shapviz)
+library(ggplot2)
+
+set.seed(1008)
+
+# fake data: 
+# all three features are generated using rnorm(n)
+# correlation btw purchase_freq and total_purchases is adjusted by varying sd
+# note that both purchase_freq and total_purchases are given the same weight when calculating clv
 n &lt;- 1000
-purchase_freq &lt;- rnorm(n)
-total_purchases &lt;- purchase_freq + rnorm(n, sd = 0.1) # Highly correlated
-avg_order_value &lt;- rnorm(n) # Independent</p>
+simulate_data &lt;- function(correlation_strength = 0.1) {
+  purchase_freq &lt;- rnorm(n)
+  total_purchases &lt;- correlation_strength * purchase_freq + 
+                    rnorm(n, sd = sqrt(1 - correlation_strength^2)) 
+  avg_order_value &lt;- rnorm(n)
+  
+  # clv depends equally on purchase_freq and total_purchases
+  clv &lt;- 2 * purchase_freq + 2 * total_purchases + 
+         0.5 * avg_order_value + rnorm(n, sd = 0.1)
+  
+  data.frame(
+    purchase_freq = purchase_freq,
+    total_purchases = total_purchases,
+    avg_order_value = avg_order_value,
+    clv = clv
+  )
+}
+data_low_cor &lt;- simulate_data(0.1)
+data_high_cor &lt;- simulate_data(0.99)
+
+# Visualize correlation btw total purchase and purchase frequency
+bind_rows(
+  mutate(data_low_cor, correlation = &quot;Low Correlation (r ≈ 0.1)&quot;),
+  mutate(data_high_cor, correlation = &quot;High Correlation (r ≈ 0.99)&quot;)
+  ) %&gt;%
+ggplot(aes(x = purchase_freq, y = total_purchases)) +
+  geom_point(alpha = 0.5) +
+  facet_wrap(~correlation) +
+  geom_smooth(method = &quot;lm&quot;, color = &quot;red&quot;) +
+  labs(
+    x = &quot;Purchase Frequency&quot;,
+    y = &quot;Total Purchases&quot;,
+    title = &quot;Feature Correlation Comparison&quot;
+  ) +
+  theme_minimal()</code></pre>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-1-1.png" width="672" />
+As can be seen in the above visualization, we have a data with a very high correlation (r ≈ .99) and a very low correlation (r ≈ .1). Then, we calculate SHAP values, using the xgboost model as a reference.</p>
+<pre class="r"><code># train xgboost &amp; obtain shap value
+get_shap_values &lt;- function(data) {
+  X &lt;- as.matrix(data[, c(&quot;purchase_freq&quot;, &quot;total_purchases&quot;, &quot;avg_order_value&quot;)])
+  y &lt;- data$clv
+  
+  model &lt;- xgboost(
+    data = X,
+    label = y,
+    nrounds = 100,
+    objective = &quot;reg:squarederror&quot;,
+    verbose = 0
+  )
+  
+  shap &lt;- shapviz(model, X_pred = X)
+  
+  return(shap)
+}
+# Get SHAP values 
+shap_low_cor &lt;- get_shap_values(data_low_cor)
+shap_high_cor &lt;- get_shap_values(data_high_cor)</code></pre>
+<p>Finally, we can compare the results of the summary/importance plots that we commonly refer to when discussing model performance and outputs.</p>
+<pre class="r"><code>sv_importance(shap_low_cor, kind = &quot;bar&quot;, max_display = 3) +
+    # fixed scales  
+    xlim(0, 2.5) + 
+    ggtitle(&quot;Feature Importance (Low Correlation)&quot;) +
+    theme_minimal()</code></pre>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-3-1.png" width="672" /></p>
+<p>In the low correlation scenario, the feature importance plots show a similar contribution between <em>‘purchase_freq’</em> and <em>‘total_purchases’</em>. This is in line with our expectations as we explicitly defined the clv and gave the same weight to both features. However, when <em>‘purchase_freq’</em> and <em>‘total_purchases’</em> are highly correlated, SHAP values begin to misattribute the impact of each individual feature.</p>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-4-1.png" width="672" /></p>
+<p>This pattern continues in <abbr title="code is simplified here because I felt that it was redundant">beeswarm plots</abbr>, where <em>‘purchase_freq’</em> still shows a linear relationship with the SHAP value, but it’s effects towards the extreme ranges are masked by <em>‘total_purchase’</em>.</p>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-6-1.png" width="672" /></p>
+<p>Problem with highly correlated features is that it consequently violates the feature independence assumption and leads to the SHAP values becoming unstable/less reliable.</p>
+<p>Practically, this leads to issues such as:</p>
+<ul>
+<li>Attribution being split arbitrarily between correlated features</li>
+<li>Inconsistent explanations across similar instances</li>
+<li>Misleading feature importance rankings</li>
+</ul>
 </div>
-</div>
-<div id="creating-target-variable" class="section level1">
-<h1>Creating target variable</h1>
-<p>clv &lt;- 2 * purchase_freq + 0.5 * avg_order_value + rnorm(n, sd = 0.1)</p>
-</div>
-<div id="checking-correlation" class="section level1">
-<h1>Checking correlation</h1>
-<p>cor(purchase_freq, total_purchases) # Typically &gt; 0.9</p>
-<p>TODO: find the compromise between the following two write-up</p>
-<p>Problem with highly correlated features is that it consequently violates the feature independence assumption and leads to the SHAP values becoming unstable/less reliable. For correlated features <span class="math inline">\(i\)</span> and <span class="math inline">\(j\)</span>, the marginal contribution of feature <span class="math inline">\(i\)</span> depends heavily on whether <span class="math inline">\(j\)</span> is in the coalition <span class="math inline">\(S\)</span>:
-<span class="math display">\[ f_x(S \cup {i} | j \in S) \neq f_x(S \cup {i} | j \notin S) \]</span>
-Practically, this leads to issues such as:
-Attribution being split arbitrarily between correlated features
-Inconsistent explanations across similar instances
-Misleading feature importance rankings
-The mathematical reason lies in how SHAP handles feature coalitions. For correlated features <span class="math inline">\(X_1\)</span> and <span class="math inline">\(X_2\)</span>, the marginal contribution calculation:
-<span class="math display">\[ \phi_i = \sum_{S \subseteq F \setminus {i}} \frac{|S|!(|F|-|S|-1)!}{|F|!}[f_x(S \cup {i}) - f_x(S)] \]</span>
-becomes unstable because <span class="math inline">\(f_x(S \cup {X_1})\)</span> and <span class="math inline">\(f_x(S \cup {X_2})\)</span> are essentially measuring the same effect.
-### Time Series</p>
+<div id="time-series" class="section level3">
+<h3>Time Series</h3>
 <p>Again, in cases where the features have temporal dependencies, the feature independence assumption is violated. When we calculate SHAP values for a time-dependent feature, we implicitly assume that each time point’s features can be considered independently. However, it is common for today’s prediction to be heavily influenced by yesterday’s values. This leads to the same issues when calculating marginal contribution of features as we have seen in the above example.</p>
-<p>TODO: solidify the following code
-1. Time Series Dependencies</p>
-<pre class="r"><code># Example: Financial returns data
-returns_data &lt;- data.frame(
-  returns = rnorm(100),
-  lag1 = lag(returns, 1),
-  lag2 = lag(returns, 2)
-)</code></pre>
 <p>While it is redundant, it was worth highlighting as temporal dependencies are surprisingly pervasive in real-life scenarios. Methods like Integrated Gradients or attention-based interpretability methods may be more appropriate.</p>
+</div>
 <div id="interaction-effects" class="section level3">
 <h3>Interaction Effects</h3>
 <p>Interaction effects are similar to scenarios where there is high correlation between features, but it is perhaps higher-order. This is because, similar to high correlation, interaction between features causes the marginal contribution to become murkier. However, unlike correlation, interaction effects can be non-linear and could be inherently joint in its effect.</p>
-<p>Consider a simple example: in the house sale price prediction model that I built, one of the features that I utilize is ‘has_pool’. Intuitively, a pool will increase the value of a home. However, further analysis showed that while pool adds significant value to a home in a warm climate, it actually reduced the value of a home in Northwestern America, where the climate tends to be colder and labor costs tend to be higher. The SHAP value for ‘has_pool’ alone fails to capture the complete story.</p>
-<p>As can be seen in our pool example, the fundamental challenge is that our tools for model interpretation often assume additivity, when real-world circumstances are inherently interactive. This is especially true for situations where us, the modeling experts, are called on to model a complex system.
-I do the following when attempting to unwind the complex knot that are interaction effects:
-Start with domain knowledge to identify likely interactions
-Use computational shortcuts to screen for unexpected interactions
-Validate discovered interactions with subject matter experts
-Consider whether the interactions are stable across different subsets of data (cross-validate)
-Below framework is the simplified version of what I do for Step 2. Note that in practice, utilizing cross-validation has higher computational cost but yields more reliable results.
-# Function to detect potential interactions
+<p>Consider a simple example: in the house sale price prediction model that I built, one of the features that I utilize is <em>‘has_pool’</em>. Intuitively, a pool will increase the value of a home. However, further analysis showed that while pool adds significant value to a home in a warm climate, it actually reduced the value of a home in Northwestern America, where the climate tends to be colder and labor costs tend to be higher. The SHAP value for <em>‘has_pool’</em> alone fails to capture the complete story.</p>
+<p>As can be seen in our pool example, the fundamental challenge is that our tools for model interpretation often assume additivity, when real-world circumstances are inherently interactive. This is especially true for situations where us, the modeling experts, are called on to model a complex system.</p>
+<p>I do the following when attempting to unwind the complex knot that are interaction effects:</p>
+<ol style="list-style-type: decimal">
+<li>Start with domain knowledge to identify likely interactions</li>
+<li>Use computational shortcuts to screen for unexpected interactions</li>
+<li>Validate discovered interactions with subject matter experts</li>
+<li>Consider whether the interactions are stable across different subsets of data (cv)</li>
+</ol>
+<p>Below framework is the simplified version of what I do for Step 2. Note that in practice, utilizing cross-validation has higher computational cost but yields more reliable results.</p>
+<pre class="r"><code># Function to detect potential interactions
 detect_interactions &lt;- function(X, y, model) {
-n_features &lt;- ncol(X)
-interaction_scores &lt;- matrix(0, n_features, n_features)</p>
-<p>for(i in 1:(n_features-1)) { # Iterate through feature pairs
-for(j in (i+1):n_features) {
-# Calculate prediction residuals with and without interaction term
-resid_main &lt;- residuals(model)
-resid_interact &lt;- residuals(update(model, . ~ . + X[,i]:X[,j]))</p>
-<pre><code>  # Score improvement in residuals
-  interaction_scores[i,j] &lt;- var(resid_main) - var(resid_interact)
+  n_features &lt;- ncol(X)
+  interaction_scores &lt;- matrix(0, n_features, n_features)
+  
+  for(i in 1:(n_features-1)) {   # iterate through feature pairs
+    for(j in (i+1):n_features) {
+      # Calculate prediction residuals with and without interaction term
+      resid_main &lt;- residuals(model)
+      resid_interact &lt;- residuals(update(model, . ~ . + X[,i]:X[,j]))
+      
+      # Score improvement in residuals
+      interaction_scores[i,j] &lt;- var(resid_main) - var(resid_interact)
+    }
+  }
+  return(interaction_scores)
 }</code></pre>
-<p>}
-return(interaction_scores)
-}</p>
 </div>
 <div id="causality-trap" class="section level3">
 <h3>Causality Trap</h3>
-<p>Correlation does not mean causation. This is something that you are taught early on and repeated again and again throughout your educational journey. However, when presenting SHAP values, it is easy for stakeholders to misattribute it to be a causal relationship.</p>
+<p><em>Correlation</em> does not mean <em>causation</em>. This is something that you are taught early on and repeated again and again throughout your educational journey. However, when presenting SHAP values, it is easy for stakeholders to misattribute it to be a causal relationship.</p>
 <p>For example, in my analysis of patients who were receiving a treatment that involved a cocktail of antibiotics for their nontuberculous mycobacterial (NTM) infections, SHAP analysis revealed that these patients suffered worse outlook on life and reported lower quality of life. However, it is important to be mindful of this crucial context: sicker patients are more likely to receive the treatment in the first place.</p>
 <p>It is crucial to be very explicit about the fact that SHAP values are fundamentally correlational in nature.</p>
 </div>
 <div id="computational-limitations" class="section level3">
 <h3>Computational Limitations</h3>
-<p>As I have briefly discussed in my previous post, SHAP value computation is not an optimized algorithm. With a dataset of n samples and p features, exact SHAP value computation requires considering <span class="math inline">\(2^p\)</span> possible feature combinations. This type of exponential growth very quickly hits the computational ceiling of an individual processor, and is also a high-priority concern in multi-processor server or cloud computing scenarios.</p>
-<p>In high-dimensional datasets (genomics or natural language processing comes to mind, but even 20+ features will start to show warning signs), calculating exact SHAP values becomes computationally infeasible. While approximation methods exist, they come with their own trade-offs, generally in its accuracy and/or reliability.</p>
+<p>As I have briefly discussed in my previous post, SHAP value computation is not an optimized algorithm. With a dataset of n samples and p features, exact SHAP value computation requires considering <span class="math inline">\(2^p\)</span> possible feature combinations. This type of exponential growth very quickly hits the computational ceiling of an individual processor, and is also a high-priority concern in multi-processor server or even robust cloud computing scenarios.</p>
+<p>In high-dimensional datasets (genomics or natural language processing comes to mind, but even 20+ features will start to show warning signs), calculating exact SHAP values becomes computationally infeasible. While approximation methods exist, they come with their own trade-offs, generally in its accuracy and/or reliability. That is to say, SHAP values are best used when expert knowledge of the field is available, and when interaction between features can be minimized.</p>
+</div>
 </div>
 <div id="parting-notes" class="section level2">
 <h2>Parting Notes</h2>
 <p>Shapley values are both powerful and useful, but as with most things, are not a silver bullet for model interpretation. They are simply just another tool in our toolbox, and knowing when not to use them is just as important as knowing how to use them effectively.</p>
-</div>
 </div>
