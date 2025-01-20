@@ -1,0 +1,203 @@
+---
+title: Exploring Endogeneity
+author: Youbeen Shim
+date: '2024-11-02'
+slug: exploring-endogeneity
+categories: []
+tags: []
+---
+
+
+
+<p>Today, let’s kick off with a take-home assessment that I had designed for new hires. If you already know what endogeneity is, maybe don’t tell your friend who is working on this.</p>
+<blockquote>
+<p>You have been tasked with a complete rehaul of the company’s <abbr title="a statistical tool/model used to assess the likelihood of a borrower defaulting on a loan">credit risk model</abbr>. Upon exploration, you find that the following variables are available:</p>
+<ul>
+<li>Business age (years)</li>
+<li>Annual revenue ($)</li>
+<li>Current debt ($)</li>
+<li>Industry category</li>
+<li>Interest rate (%)</li>
+<li>Credit utilization (%)</li>
+<li>Number of existing loans</li>
+<li>Payment history score (0-100)</li>
+<li>Cash flow volatility (standard deviation of monthly cash flows)</li>
+</ul>
+<p>You goal is to build a model that maximize ROC-AUC score for default prediction. Note that the attached data is that of our previous clients. Your model’s performance will be evaluated on both the explanation of your model design choice and the performance on data of our future clients.</p>
+</blockquote>
+<p><em>Take a moment. Which variables would you choose? What relationships would you expect to see?</em></p>
+<div id="the-trap" class="section level2">
+<h2>The Trap</h2>
+<p>Most data scientists, especially new hires that are very enthuasistic about machine learning, cannot resist the temptation to include interest rate as a predictor. I cannot fault them too much - it makes intuitive sense: higher interest rates often correlate with higher default probabilities.</p>
+<p>Their models often look something like this:</p>
+<pre class="r"><code>model &lt;- glm(default ~ interest_rate + business_age + annual_revenue + 
+             credit_utilization + payment_history,
+             family = binomial(link = &quot;logit&quot;),
+             data = loan_data)</code></pre>
+<p>When you build it out and test the model, it performs well too. Candidates will see something akin to:</p>
+<ul>
+<li>Strong ROC-AUC scores (Something in the upper .8 range)</li>
+<li><em>‘Interest Rate’</em> showing high significance (p-value less than .001)</li>
+<li>Clear positive correlation with defaults</li>
+</ul>
+<p>But if you had submitted this, you have already fallen into my trap: We’ve just walked head-first into a classic endogeneity problem.</p>
+</div>
+<div id="why-should-we-care" class="section level2">
+<h2>Why Should We Care?</h2>
+<p>Imagine that we are trying to model the relationship:</p>
+<p><span class="math display">\[Default_i = \beta_0 + \beta_1 InterestRate_i + \epsilon_i\]</span></p>
+<p>Which, at first glance, looks straightforward. But here’s the catch - the interest rate itself is typically set based on the perceived default risk:</p>
+<p><span class="math display">\[InterestRate_i = \gamma_0 + \gamma_1 PerceivedRisk_i + \nu_i\]</span></p>
+<p>This creates a circular relationship, violating one of the fundamental modeling assumptions: <strong>predictor variables are independent from the error term</strong> (commonly referred to as the exogeneity assumption).</p>
+<p>Practically, this leads to false confidence, where our evaluation will often show much better performance than in real-life scenarios. The model may show that higher interest rates predict higher default rates, but is it because high interest rates cause defaults, or because we assign higher rates to riskier borrowers?</p>
+<p>This extends beyond theoratical violations, especially in finance. This mistake has real implications for:</p>
+<ul>
+<li>Risk pricing strategies</li>
+<li>Portfolio management decisions</li>
+<li>Regulatory compliance (<em>especially</em> for fair lending)</li>
+<li>Capital reserve calculations</li>
+</ul>
+</div>
+<div id="common-sources-of-endogeneity-in-finance" class="section level2">
+<h2>Common Sources of Endogeneity (in Finance)</h2>
+<p>While there are countless sources of endogeneity, in my practice, I’ve encoutered three main areas to watch out for.</p>
+<div id="simultaneity" class="section level3">
+<h3>1. Simultaneity</h3>
+<p>The ‘trap’ that I set up for potential new hires was on simultaneity, where predictor and outcome influence each other. There are many cases of simultaneity once you start digging.</p>
+<ol style="list-style-type: decimal">
+<li><span class="math inline">\(\text{Credit Limit} \leftrightarrow \text{Spending Behavior}\)</span></li>
+</ol>
+<p>Credit limits effect spending behavior, but spending history affects limits.</p>
+<ol start="2" style="list-style-type: decimal">
+<li><span class="math inline">\(\text{Transaction Frequency} \leftrightarrow \text{Fraud Rules}\)</span></li>
+</ol>
+<p>Stricter rules used to detect fraud affect transaction patterns, but patterns inform rules.</p>
+<ol start="3" style="list-style-type: decimal">
+<li><span class="math inline">\(\text{Account Balances} \leftrightarrow \text{Fee Structures}\)</span></li>
+</ol>
+<p>Banks typically determine fees using the client’s account balance, but the bank’s fee policy attract certain types of customers.</p>
+</div>
+<div id="omitted-variables" class="section level3">
+<h3>2. Omitted Variables</h3>
+<p>Omitted variables, where an unmeasured variable influences both predictor and the target, are particularly tricky - it is difficult to know what you do not know. This is why continuous exploration and research is essential for any modeler. We’ll go over how to detect endogeneity in the following section, which should help, but the best thing to do is learn from popular examples.</p>
+<p>Startups, such as <a href="https://www.prismdata.com/cashscore">PrismData</a>, leverages <em>income volatility</em> in their propritary credit scoring model. By incorporating novel features to their model, they can (presumably) increase their performance compared to legacy institutions, which typically utilizes income, not stability.</p>
+<p>When considering <a href="https://www.techscience.com/cmc/v72n3/47525/html">digital banking adoption</a> (a key interest in the fintech space), we have found that an individual’s <abbr title="their degree of technology acceptance using the TAM framework">tech-savviness</abbr>, not just usage, is a key consideration.</p>
+<p>Finally, omitted variables are still an active area of reserach in peer-to-peer lending. The <a href="https://www.sciencedirect.com/science/article/abs/pii/S0167718716302776">research</a> from National Bureau of Economic Research shows that, while borrowers with social ties are more likely to have their loans funded and receive lower interest rates, they are paradoxically more likely to pay late or default.</p>
+</div>
+<div id="selection-bias" class="section level3">
+<h3>3. Selection Bias</h3>
+<p>Selection bias, with endogeneity in mind, are cases where the data collection process itself relates to the target. This type of bias are particularly widespread in the fintech space, probably due to its digit-first and rapid-processing nature. Common problems that I’ve seen include:</p>
+<ul>
+<li>Only being able to observe approved loans (or clients) in historical data</li>
+<li>Customer acquisition through specific channels with inherent population bias</li>
+<li>Similarly, customer self-selection into niche products</li>
+<li>Or even survivorship bias in long-term performance data</li>
+</ul>
+</div>
+</div>
+<div id="a-practical-guide-to-detecting-endogeneity" class="section level2">
+<h2>a Practical Guide to Detecting Endogeneity</h2>
+<p>“So what?” you may be asking, “these may be a concern, but there are too many things to worry about. Besides, all models are wrong anyways.” Well, dear reader, let me at least leave you with my distilled approach to detecting endogeneity. At the very least, you can claim to have done the minimum due diligence.</p>
+<p>My not-so-elaborate approach compromises of three steps in increasing complexity.</p>
+<div id="consider-domain-knowledge" class="section level3">
+<h3>1. consider domain knowledge</h3>
+<p>First, ask yourself:</p>
+<ol style="list-style-type: decimal">
+<li><abbr title="this simple question would have saved you from my 'trap'">How are the predictors determined? </abbr></li>
+<li>What information feeds into the target? Could it influence the predictors as well?</li>
+<li>Are there any critical information that cannot be measured?</li>
+<li>What are the potential sources of feedback loops in our business?</li>
+</ol>
+<p>A simple coffee break to consider these questions have saved me more times than I can count. The following two steps really serve to confirm my suspicion rather than being reliable tools for detecthing endogeneity.</p>
+</div>
+<div id="perform-visual-diagnostics" class="section level3">
+<h3>2. perform visual diagnostics</h3>
+<p>Youe eyes and <abbr title="or an equivalent Python package of your choice">ggplot</abbr> are your friends. Look for patterns that suggest complex relationships. Attached are sample skeleton codes to start you on the right path:</p>
+<div id="residual-plots-to-detect-systematic-patterns" class="section level4">
+<h4>residual plots to detect systematic patterns</h4>
+<pre class="r"><code>library(ggplot2)
+
+# residuals against fitted values
+ggplot(data, aes(x = fitted, y = standardized_residuals)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = &quot;loess&quot;) +
+  geom_hline(yintercept = 0, linetype = &quot;dashed&quot;) +
+  labs(title = &quot;Residuals vs Fitted&quot;,
+       x = &quot;Fitted values&quot;,
+       y = &quot;Standardized residuals&quot;)
+
+# Q-Q plot
+ggplot(data, aes(sample = standardized_residuals)) +
+  stat_qq() +
+  stat_qq_line() +
+  labs(title = &quot;Normal Q-Q Plot&quot;)</code></pre>
+</div>
+<div id="correation-plots-to-check-for-unexpected-correlations" class="section level4">
+<h4>correation plots to check for unexpected correlations</h4>
+<pre class="r"><code>library(corrplot)
+
+vars_of_interest &lt;- c(&quot;interest_rate&quot;, &quot;business_age&quot;, &quot;annual_revenue&quot;, 
+                   &quot;credit_utilization&quot;, &quot;payment_history&quot;)
+
+cor_matrix &lt;- cor(data[vars_of_interest])
+
+corrplot(cor_matrix, 
+        method = &quot;color&quot;,
+        type = &quot;upper&quot;,
+        addCoef.col = &quot;black&quot;,
+        order = &quot;hclust&quot;,
+        tl.col = &quot;black&quot;)</code></pre>
+</div>
+<div id="looking-out-for-time-series-patterns-in-prediction-errors" class="section level4">
+<h4>looking out for time series patterns in prediction errors</h4>
+<pre class="r"><code>library(ggplot2)
+library(tidyverse)
+
+# create a time variable as x-axis, and calculate summary stat of interest
+monthly_patterns &lt;- data %&gt;%
+  group_by(year_month = floor_date(loan_date, &quot;month&quot;)) %&gt;%
+  summarise(
+    avg_residual = mean(residuals),
+    avg_interest = mean(interest_rate),
+    default_rate = mean(default),
+    n_loans = n()
+  )
+
+gplot(monthly_patterns, aes(x = year_month, y = avg_residual)) +
+  geom_line() +
+  geom_smooth(method = &quot;loess&quot;) +
+  labs(title = &quot;Average Residuals Over Time&quot;,
+       x = &quot;Date&quot;,
+       y = &quot;Average Residual&quot;)
+
+ggplot(monthly_patterns, aes(x = year_month)) +
+  geom_line(aes(y = default_rate, color = &quot;Default Rate&quot;)) +
+  geom_line(aes(y = scale(avg_interest), color = &quot;Scaled Interest Rate&quot;)) +
+  labs(title = &quot;Default Rate vs Interest Rate Trends&quot;,
+       x = &quot;Date&quot;,
+       y = &quot;Rate&quot;)</code></pre>
+</div>
+</div>
+<div id="design-statistical-tests" class="section level3">
+<h3>3. design statistical tests</h3>
+<p>Durbin-Wu-Hausman test is designed to help identify endogeneity. Once (a) suspected endogenous variables are identified, and (b) appropriate instrumental variables are chosen, perform a two-sage regression. (c) first-stage regression should regress the suspected endogenous variable on all exogenous variables and instruments. (d) residuals from this regression should be saved.</p>
+<pre class="r"><code># a &amp; b
+instruments &lt;- c(&quot;fed_rate&quot;, &quot;bank_liquidity_ratio&quot;, &quot;market_rate_spread&quot;)
+# c
+stage1 &lt;- lm(interest_rate ~ fed_rate + bank_liquidity_ratio + market_rate_spread +
+             business_age + annual_revenue + industry + credit_utilization,
+             data = loan_data)
+# d
+residuals &lt;- residuals(stage1)</code></pre>
+<p>now, (e) in the second stage regression, we can run the original model, including the saved residuals as an additional explanatory variable.</p>
+<pre class="r"><code># e
+stage2 &lt;- glm(default ~ interest_rate + business_age + annual_revenue + 
+              industry + credit_utilization + residuals,
+              family = binomial(link = &quot;logit&quot;),
+              data = loan_data)</code></pre>
+<p>finally, (f) If the coefficient is statisticall significant, we reject the <abbr title="H0: exogeneity">null hypothesis</abbr>. Otherwise, we fail to reject the null hypothesis.</p>
+<pre class="r"><code># f
+summary(stage2)</code></pre>
+<p>In cases where endogeneity is found, instrumental variables analysis can be used to address it. That, and more, will be dicussed in my next post.</p>
+</div>
+</div>
