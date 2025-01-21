@@ -28,7 +28,7 @@ tags: []
 <p><em>Take a moment. Which variables would you choose? What relationships would you expect to see?</em></p>
 <div id="the-trap" class="section level2">
 <h2>The Trap</h2>
-<p>Most data scientists, especially new hires that are very enthuasistic about machine learning, cannot resist the temptation to include interest rate as a predictor. I cannot fault them too much - it makes intuitive sense: higher interest rates often correlate with higher default probabilities.</p>
+<p>Most data scientists, especially new hires that are very enthuasistic about machine learning, cannot resist the temptation to include <em>‘interest_rate’</em> as a predictor. I cannot fault them too much - it makes intuitive sense: higher interest rates often correlate with higher default probabilities.</p>
 <p>Their models often look something like this:</p>
 <pre class="r"><code>model &lt;- glm(default ~ interest_rate + business_age + annual_revenue + 
              credit_utilization + payment_history,
@@ -49,21 +49,21 @@ tags: []
 <p>Which, at first glance, looks straightforward. But here’s the catch - the interest rate itself is typically set based on the perceived default risk:</p>
 <p><span class="math display">\[InterestRate_i = \gamma_0 + \gamma_1 PerceivedRisk_i + \nu_i\]</span></p>
 <p>This creates a circular relationship, violating one of the fundamental modeling assumptions: <strong>predictor variables are independent from the error term</strong> (commonly referred to as the exogeneity assumption).</p>
-<p>Practically, this leads to false confidence, where our evaluation will often show much better performance than in real-life scenarios. The model may show that higher interest rates predict higher default rates, but is it because high interest rates cause defaults, or because we assign higher rates to riskier borrowers?</p>
-<p>This extends beyond theoratical violations, especially in finance. This mistake has real implications for:</p>
+<p>Practically, this leads to false confidence, where our evaluation will often show much better performance than in real-life scenarios. The model may show that higher interest rates predict higher default rates: but is it because high interest rates cause defaults, or because we assign higher rates to riskier borrowers?</p>
+<p>This extends beyond theoretical violations, especially in finance. This mistake has very real implications for:</p>
 <ul>
+<li>Regulatory compliance (<em>especially</em> for fair lending)</li>
 <li>Risk pricing strategies</li>
 <li>Portfolio management decisions</li>
-<li>Regulatory compliance (<em>especially</em> for fair lending)</li>
 <li>Capital reserve calculations</li>
 </ul>
 </div>
 <div id="common-sources-of-endogeneity-in-finance" class="section level2">
 <h2>Common Sources of Endogeneity (in Finance)</h2>
-<p>While there are countless sources of endogeneity, in my practice, I’ve encoutered three main areas to watch out for.</p>
+<p>While there are countless sources of endogeneity, in my practice, I’ve encountered three main areas to watch out for.</p>
 <div id="simultaneity" class="section level3">
 <h3>1. Simultaneity</h3>
-<p>The ‘trap’ that I set up for potential new hires was on simultaneity, where predictor and outcome influence each other. There are many cases of simultaneity once you start digging.</p>
+<p>The ‘trap’ that I set up for new hires was on simultaneity, where predictor and outcome influence each other. There are many cases of simultaneity in finance once you start digging:</p>
 <ol style="list-style-type: decimal">
 <li><span class="math inline">\(\text{Credit Limit} \leftrightarrow \text{Spending Behavior}\)</span></li>
 </ol>
@@ -86,7 +86,7 @@ tags: []
 </div>
 <div id="selection-bias" class="section level3">
 <h3>3. Selection Bias</h3>
-<p>Selection bias, with endogeneity in mind, are cases where the data collection process itself relates to the target. This type of bias are particularly widespread in the fintech space, probably due to its digit-first and rapid-processing nature. Common problems that I’ve seen include:</p>
+<p>Selection bias, with endogeneity in mind, are cases where the data collection process itself relates to the target. This type of bias are particularly widespread in the fintech space, probably due to its digital-first and rapid-processing nature. Common problems that I’ve seen include:</p>
 <ul>
 <li>Only being able to observe approved loans (or clients) in historical data</li>
 <li>Customer acquisition through specific channels with inherent population bias</li>

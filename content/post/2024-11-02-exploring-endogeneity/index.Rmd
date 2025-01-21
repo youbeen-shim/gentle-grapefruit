@@ -27,7 +27,7 @@ Today, let’s kick off with a take-home assessment that I had designed for new 
 
 ## The Trap
 
-Most data scientists, especially new hires that are very enthuasistic about machine learning, cannot resist the temptation to include interest rate as a predictor. I cannot fault them too much - it makes intuitive sense: higher interest rates often correlate with higher default probabilities. 
+Most data scientists, especially new hires that are very enthuasistic about machine learning, cannot resist the temptation to include *'interest_rate'* as a predictor. I cannot fault them too much - it makes intuitive sense: higher interest rates often correlate with higher default probabilities. 
 
 Their models often look something like this: 
 
@@ -59,23 +59,23 @@ $$InterestRate_i = \gamma_0 + \gamma_1 PerceivedRisk_i + \nu_i$$
 
 This creates a circular relationship, violating one of the fundamental modeling assumptions: **predictor variables are independent from the error term** (commonly referred to as the exogeneity assumption). 
 
-Practically, this leads to false confidence, where our evaluation will often show much better performance than in real-life scenarios. The model may show that higher interest rates predict higher default rates, but is it because high interest rates cause defaults, or because we assign higher rates to riskier borrowers?
+Practically, this leads to false confidence, where our evaluation will often show much better performance than in real-life scenarios. The model may show that higher interest rates predict higher default rates: but is it because high interest rates cause defaults, or because we assign higher rates to riskier borrowers?
 
-This extends beyond theoratical violations, especially in finance. This mistake has real implications for:
+This extends beyond theoretical violations, especially in finance. This mistake has very real implications for:
 
+- Regulatory compliance (*especially* for fair lending)
 - Risk pricing strategies
 - Portfolio management decisions
-- Regulatory compliance (*especially* for fair lending)
 - Capital reserve calculations
 
 
 ## Common Sources of Endogeneity (in Finance)
 
-While there are countless sources of endogeneity, in my practice, I've encoutered three main areas to watch out for. 
+While there are countless sources of endogeneity, in my practice, I've encountered three main areas to watch out for. 
 
 ### 1. Simultaneity
 
-The 'trap' that I set up for potential new hires was on simultaneity, where predictor and outcome influence each other. There are many cases of simultaneity once you start digging.
+The 'trap' that I set up for new hires was on simultaneity, where predictor and outcome influence each other. There are many cases of simultaneity in finance once you start digging:
 
 1. $\text{Credit Limit} \leftrightarrow \text{Spending Behavior}$
 
@@ -101,7 +101,7 @@ Finally, omitted variables are still an active area of reserach in peer-to-peer 
 
 ### 3. Selection Bias
 
-Selection bias, with endogeneity in mind, are cases where the data collection process itself relates to the target. This type of bias are particularly widespread in the fintech space, probably due to its digit-first and rapid-processing nature. Common problems that I've seen include: 
+Selection bias, with endogeneity in mind, are cases where the data collection process itself relates to the target. This type of bias are particularly widespread in the fintech space, probably due to its digital-first and rapid-processing nature. Common problems that I've seen include: 
 
 - Only being able to observe approved loans (or clients) in historical data
 - Customer acquisition through specific channels with inherent population bias
