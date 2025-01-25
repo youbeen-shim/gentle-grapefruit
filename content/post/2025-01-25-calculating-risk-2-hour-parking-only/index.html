@@ -1,0 +1,144 @@
+---
+title: 'Calculating Risk: 2-Hour Parking Only'
+author: Youbeen Shim
+date: '2025-01-25'
+slug: calculating-risk-2-hour-parking-only
+categories: []
+tags: []
+---
+
+
+
+<div id="coral-zone-2-hour-parking-only" class="section level2">
+<h2>“Coral Zone: 2-Hour Parking Only”</h2>
+<p>It’s a lazy Saturday morning. Clouds are cloaking the sun, so the air still feels chilly in my lungs. I woke up late despite having an early night yesterday, and all I want to do is be wrapped in a warm blanket back home. I’m meeting a client in 20 minutes, and the meeting itself should take no longer than 90-minutes, so the 2-hour limit is no problem. But it does take me back to the time where I worked at downtown Palo Alto, making micro-optimizations to “take back” every precious minute I had.</p>
+</div>
+<div id="the-background" class="section level2">
+<h2>the Background</h2>
+<p>Let’s set up the problem. Standing on University Avenue in downtown Palo Alto, you’ll notice a strange sign. Well, maybe not so strange - it reads: “Coral Zone: 2-Hour Parking Only”.</p>
+<div class="figure" style="text-align: center"><span style="display:block;" id="fig:unnamed-chunk-1"></span>
+<embed src="images/downtown-color-zones.pdf" title="Parking Zones in Downtown Palo ALto" width="750" height="400" type="application/pdf" />
+<p class="caption">
+Figure 1: Parking Zones in Downtown Palo ALto
+</p>
+</div>
+<p>Moreover, consider:</p>
+<ul>
+<li>four distant parking zones: Purple, Coral, Lime, and Blue.</li>
+<li><abbr title="we'll ignore that some spaces allow for 3-hour parking for simplicity">a nominal “2-hour” limit</abbr></li>
+<li>$65 ticket for violations</li>
+<li>$15 day-pass avaialbe for purchase</li>
+<li>$900 annual pass that allows unlimited parking</li>
+<li>an 8-hour workday</li>
+</ul>
+<div id="lawful-good" class="section level3">
+<h3>Lawful Good</h3>
+<p>The traditional, straight-edge, solution is straightforward: arrive at 8am, move at 10am, again at noon, once more at 2pm, and leave at 4pm.</p>
+<p>Assuming that you did not take off for lunch and that parking takes 15 minutes each time, you could fit in 8 hours of work and be able to leave by 5pm. But is this optimal? And, perhaps more importantly, is it necessary?</p>
+</div>
+<div id="chaotic-neutral" class="section level3">
+<h3>Chaotic Neutral</h3>
+<p>Setting aside our responsibilities as law-abiding, rule-following, upright citizens of the republic, I couldn’t help but notice something interesting about the enforcement mechanism. The “2-hour” limit is not actually measured using the <em>time when you parked</em>, but rather using the <em>time when a parking enforcer last observed your vehicle</em>.</p>
+<p>The true constrain isn’t time itself, but rather the probability of being observed by an enforcement officer.</p>
+</div>
+</div>
+<div id="section" class="section level2">
+<h2></h2>
+<p>Let’s discuss what we don’t know. In our basic probability model, two key parameters are unknown:
+- <span class="math inline">\(X\)</span>: The number of parking enforcers
+- <span class="math inline">\(Y\)</span>: The patrol rate (which we’ll define as zones visited per hour)</p>
+<p>Again, see that the probability of getting a ticket (what we really care about) isn’t just a function of time - it’s a function of being observed when we have gone beyond the time limit. This is where survival analysis becomes particularly useful.</p>
+<p>For any given time <span class="math inline">\(t\)</span> beyond the 2-hour mark, we can model the survival function <span class="math inline">\(S(t)\)</span> as the probability of not receiving a ticket up to time <span class="math inline">\(t\)</span>. In mathematical terms:</p>
+<p><span class="math display">\[ S(t) = P(T &gt; t) \]</span></p>
+<p>where <span class="math inline">\(T\)</span> is the time until receiving a ticket.</p>
+<p>The hazard function <span class="math inline">\(h(t)\)</span>, representing the instantaneous rate of receiving a ticket at time <span class="math inline">\(t\)</span> given survival up to that point, can be expressed as:</p>
+<p><span class="math display">\[ h(t) = \lim_{\Delta t \to 0} \frac{P(t \leq T &lt; t + \Delta t | T \geq t)}{\Delta t} \]</span></p>
+<p>In our case, this hazard function is influenced by both <span class="math inline">\(X\)</span> and <span class="math inline">\(Y\)</span>. We can model it as:</p>
+<p><span class="math display">\[ h(t) = XY \cdot \frac{1}{4} \cdot (1 - e^{-\lambda t}) \]</span></p>
+<p>where:
+- <span class="math inline">\(\frac{1}{4}\)</span> represents the probability of an enforcer being in your specific zone
+- <span class="math inline">\((1 - e^{-\lambda t})\)</span> models the increasing probability of being recognized as a violator as time passes
+- <span class="math inline">\(\lambda\)</span> is a parameter that controls how quickly the probability of recognition increases</p>
+<p>This gives us our cumulative risk function:</p>
+<p><span class="math display">\[ R(t) = 1 - \exp\left(-\int_0^t h(u)du\right) \]</span></p>
+<p>The expected cost <span class="math inline">\(C(t)\)</span> for any given overstay duration <span class="math inline">\(t\)</span> can then be calculated as:</p>
+<p><span class="math display">\[ C(t) = 200 \cdot R(t) \]</span></p>
+<p>This framework allows us to start analyzing the real risk profile of different parking strategies.</p>
+<p>TODO:
+Include the visualization of the survival analysis function here.</p>
+</div>
+<div id="definitely-include" class="section level2">
+<h2>definitely include:</h2>
+<p>Using the survivor analysis to pick a time</p>
+</div>
+<div id="learning-from-limited-data" class="section level2">
+<h2>Learning from Limited Data</h2>
+<p>Having established our risk mode, we face a practical challenge: how do we estimate number_of_enforcers and patrol_rate using our day-to-day experiences?</p>
+<p>While not perfect, each day we park provides two key pieces of information: the duration we exceeded the limit by and whether or not we received a ticket. This also mirrors our reality: each data point that we accumulate has a cost attached to it.</p>
+<p>Our likelihood function for a single observation can be expressed as:</p>
+<p><span class="math display">\[ L(X,Y|t,\text{ticket}) = \begin{cases}
+R(t|X,Y) &amp; \text{if ticket received} \\
+1-R(t|X,Y) &amp; \text{if no ticket received}
+\end{cases} \]</span></p>
+<p>where <span class="math inline">\(R(t|X,Y)\)</span> is our risk function from earlier. For our prior distributions, we can use reasonable assumptions:</p>
+<p><span class="math display">\[ X \sim \text{Poisson}(\lambda_X) \]</span>
+<span class="math display">\[ Y \sim \text{Gamma}(\alpha_Y, \beta_Y) \]</span></p>
+<p>The question becomes: how many observations do we need for reliable estimates?</p>
+<p>TODO: visualize the simulation studies here
+&lt;Through simulation studies, I’ve found that about 20-30 workdays of data provide reasonable convergence for decision-making purposes&gt;. Using the (probably monte carlo), it looks like about 20-30 workdays of data provide reasonable convergence for decision-making purposes.</p>
+<p>However, practically speaking: we actually don’t need precise estimates of X and Y to make better parking decisions.</p>
+</div>
+<div id="when-good-enough-is-actually-perfect" class="section level2">
+<h2>When “Good Enough” Is Actually Perfect</h2>
+<p>Wwe don’t need to know exactly how many enforcement officers are patrolling or their exact rate of coverage. What we really need to know is when the risk crosses certain thresholds that would change our behavior.</p>
+<p>Let’s define three key thresholds:
+<span class="math display">\[ C_1(t) = \text{cost of moving car once per day} \]</span>
+<span class="math display">\[ C_2(t) = \text{cost of moving car twice per day} \]</span>
+<span class="math display">\[ C_3(t) = \text{cost of moving car three times per day} \]</span></p>
+<p>Our optimal strategy changes when:</p>
+<p><span class="math display">\[ E[\text{ticket cost}|t] &gt; \min(C_1, C_2, C_3) \]</span></p>
+<p>This simplified decision framework dramatically reduces our required sample size. Instead of needing precise parameter estimates, we only need enough data to determine which regime we’re in. In practice, I’ve found this often requires only 8-10 days of observations.</p>
+<p><also show monte carlo here to help observe the differences></p>
+</div>
+<div id="todo-need-to-consider-if-8-10-days-of-observations-are-worth-not-buying-an-annual-pass-for." class="section level2">
+<h2>TODO: need to consider if 8-10 days of observations are worth not buying an annual pass for.</h2>
+</div>
+<div id="more-things-to-consider" class="section level2">
+<h2>More things to consider</h2>
+<p>While the theory is elegant, there are additional real-world considerations that would help further improve our model that I have not discussed.</p>
+<div id="temporal-variations" class="section level3">
+<h3>Temporal Variations</h3>
+<p>Parking officers are only human, and enforcement patterns aren’t uniform throughout the day. If, for example, I notice that patrol frequency tends to peak during mid-morning and early afternoon hours, I can modify the risk function to account for this:</p>
+<p><span class="math display">\[ h(t,\text{TOD}) = XY \cdot \frac{1}{4} \cdot (1 - e^{-\lambda t}) \cdot \phi(\text{TOD}) \]</span></p>
+<p>where <span class="math inline">\(\phi(\text{TOD})\)</span> is a time-of-day adjustment factor.</p>
+</div>
+<div id="spatial-correlations" class="section level3">
+<h3>Spatial Correlations</h3>
+<p>The four-zone system introduces spatial dependencies that can be leveraged. Imagine that you observed an enforcer in the Blue Zone while moving your car. The probability of immediate enforcement in the Purple Zone, furthest away from the Blue Zone, decreases significantly. This creates opportunities for strategic zone selection.</p>
+</div>
+<div id="reframing-cost-benefit" class="section level3">
+<h3>Reframing Cost-Benefit</h3>
+<p>The true cost of moving your car isn’t just the time that was spent walking. At minimum, it should also include the loss in productivity from the required context switching. Gloria Mark, the study lead for <a href="https://ics.uci.edu/~gmark/chi08-mark.pdf">“The Cost of Interrupted Work”</a>, estimates an average of <em>23 minutes and 15 seconds</em> to get back to the task. When every minute of productivity matters, the cost-benefit framework should be modified to reflect this.</p>
+</div>
+</div>
+<div id="beyond-parking" class="section level2">
+<h2>Beyond Parking</h2>
+<p>Using the parking puzzle, we explored survival analysis and bayesian learning, but I believe that the true lessons come from broader principles in risk calculation and decision theory.</p>
+<div id="the-value-of-imperfect-information" class="section level3">
+<h3>The Value of Imperfect Information</h3>
+<p>We often do not need perfect information to make significantly better decisions. Understanding the key decision boundaries is frequently more valuable than precise parameter estimation.</p>
+</div>
+<div id="dynamic-risk-assessment" class="section level3">
+<h3>Dynamic Risk Assessment</h3>
+<p>The risk isn’t static - it evolves based on both time and previous observations. This dynamic nature appears in many real-world problems, from financial trading to resource allocation.</p>
+</div>
+<div id="practical-bayesian-analysis" class="section level3">
+<h3>Practical Bayesian Analysis</h3>
+<p>Sometimes the most valuable application of Bayesian methods isn’t in getting precise parameter estimates, but in updating our decision boundaries based on accumulated evidence.</p>
+<p>Risk analysis
+Whether you’re managing parking tickets, optimizing business processes, or making investment decisions, the core principles remain the same: understand your risk function, identify key decision thresholds, and gather just enough data to make informed decisions.</p>
+</div>
+</div>
+<div id="todo-decide-to-shape-the-narrative-towards-1-this-is-what-you-are-supposed-to-do-in-risk-analysis-or-2-these-are-the-ways-to-consider-this-problem-risk-analysis-being-the-most-practical-one." class="section level2">
+<h2>TODO: decide to shape the narrative towards (1) this is what you are supposed to do in risk analysis or (2) these are the ways to consider this problem, risk analysis being the most practical one.</h2>
+</div>

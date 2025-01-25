@@ -1,0 +1,174 @@
+---
+title: 'Calculating Risk: 2-Hour Parking Only'
+author: Youbeen Shim
+date: '2025-01-25'
+slug: calculating-risk-2-hour-parking-only
+categories: []
+tags: []
+---
+
+## “Coral Zone: 2-Hour Parking Only” 
+
+It’s a lazy Saturday morning. Clouds are cloaking the sun, so the air still feels chilly in my lungs. I woke up late despite having an early night yesterday, and all I want to do is be wrapped in a warm blanket back home. I'm meeting a client in 20 minutes, and the meeting itself should take no longer than 90-minutes, so the 2-hour limit is no problem. But it does take me back to the time where I worked at downtown Palo Alto, making micro-optimizations to "take back" every precious minute I had. 
+
+
+## the Background
+
+Let's set up the problem. Standing on University Avenue in downtown Palo Alto, you'll notice a strange sign. Well, maybe not so strange - it reads: "Coral Zone: 2-Hour Parking Only".
+
+```{r, out.width="750", out.height="400", include=TRUE, fig.align="center", fig.cap=c("Parking Zones in Downtown Palo ALto"), echo=FALSE}
+knitr::include_graphics("/Users/youbeenshim/Documents/gentle-grapefruit/content/post/2025-01-25-calculating-risk-2-hour-parking-only/images/downtown-color-zones.pdf")
+```
+
+ Moreover, consider:
+
+* four distant parking zones: Purple, Coral, Lime, and Blue.
+* <abbr title="we'll ignore that some spaces allow for 3-hour parking for simplicity">a nominal "2-hour" limit</abbr>
+* $65 ticket for violations
+* $15 day-pass avaialbe for purchase
+* $900 annual pass that allows unlimited parking
+* an 8-hour workday
+
+### Lawful Good
+
+The traditional, straight-edge, solution is straightforward: arrive at 8am, move at 10am, again at noon, once more at 2pm, and leave at 4pm. 
+
+Assuming that you did not take off for lunch and that parking takes 15 minutes each time, you could fit in 8 hours of work and be able to leave by 5pm. But is this optimal? And, perhaps more importantly, is it necessary? 
+
+### Chaotic Neutral
+
+Setting aside our responsibilities as law-abiding, rule-following, upright citizens of the republic, I couldn't help but notice something interesting about the enforcement mechanism. The "2-hour" limit is not actually measured using the *time when you parked*, but rather using the *time when a parking enforcer last observed your vehicle*.
+
+The true constrain isn't time itself, but rather the probability of being observed by an enforcement officer. 
+
+
+## 
+
+Let’s discuss what we don’t know. In our basic probability model, two key parameters are unknown:
+- $X$: The number of parking enforcers
+- $Y$: The patrol rate (which we'll define as zones visited per hour)
+
+Again, see that the probability of getting a ticket (what we really care about) isn’t just a function of time - it’s a function of being observed when we have gone beyond the time limit. This is where survival analysis becomes particularly useful. 
+
+For any given time $t$ beyond the 2-hour mark, we can model the survival function $S(t)$ as the probability of not receiving a ticket up to time $t$. In mathematical terms:
+
+$$ S(t) = P(T > t) $$
+
+where $T$ is the time until receiving a ticket.
+
+The hazard function $h(t)$, representing the instantaneous rate of receiving a ticket at time $t$ given survival up to that point, can be expressed as:
+
+$$ h(t) = \lim_{\Delta t \to 0} \frac{P(t \leq T < t + \Delta t | T \geq t)}{\Delta t} $$
+
+In our case, this hazard function is influenced by both $X$ and $Y$. We can model it as:
+
+$$ h(t) = XY \cdot \frac{1}{4} \cdot (1 - e^{-\lambda t}) $$
+
+where:
+- $\frac{1}{4}$ represents the probability of an enforcer being in your specific zone
+- $(1 - e^{-\lambda t})$ models the increasing probability of being recognized as a violator as time passes
+- $\lambda$ is a parameter that controls how quickly the probability of recognition increases
+
+This gives us our cumulative risk function:
+
+$$ R(t) = 1 - \exp\left(-\int_0^t h(u)du\right) $$
+
+The expected cost $C(t)$ for any given overstay duration $t$ can then be calculated as:
+
+$$ C(t) = 200 \cdot R(t) $$
+
+This framework allows us to start analyzing the real risk profile of different parking strategies. 
+
+TODO:
+Include the visualization of the survival analysis function here. 
+
+## definitely include:
+Using the survivor analysis to pick a time
+
+## Learning from Limited Data
+
+Having established our risk mode, we face a practical challenge: how do we estimate number_of_enforcers and patrol_rate using our day-to-day experiences? 
+
+While not perfect, each day we park provides two key pieces of information: the duration we exceeded the limit by and whether or not we received a ticket. This also mirrors our reality: each data point that we accumulate has a cost attached to it. 
+
+Our likelihood function for a single observation can be expressed as:
+
+$$ L(X,Y|t,\text{ticket}) = \begin{cases} 
+R(t|X,Y) & \text{if ticket received} \\
+1-R(t|X,Y) & \text{if no ticket received}
+\end{cases} $$
+
+where $R(t|X,Y)$ is our risk function from earlier. For our prior distributions, we can use reasonable assumptions:
+
+$$ X \sim \text{Poisson}(\lambda_X) $$
+$$ Y \sim \text{Gamma}(\alpha_Y, \beta_Y) $$
+
+The question becomes: how many observations do we need for reliable estimates? 
+
+TODO: visualize the simulation studies here
+<Through simulation studies, I've found that about 20-30 workdays of data provide reasonable convergence for decision-making purposes>. Using the (probably monte carlo), it looks like about 20-30 workdays of data provide reasonable convergence for decision-making purposes. 
+
+However, practically speaking: we actually don’t need precise estimates of X and Y to make better parking decisions. 
+
+## When "Good Enough" Is Actually Perfect
+
+Wwe don't need to know exactly how many enforcement officers are patrolling or their exact rate of coverage. What we really need to know is when the risk crosses certain thresholds that would change our behavior.
+
+Let's define three key thresholds:
+$$ C_1(t) = \text{cost of moving car once per day} $$
+$$ C_2(t) = \text{cost of moving car twice per day} $$
+$$ C_3(t) = \text{cost of moving car three times per day} $$
+
+Our optimal strategy changes when:
+
+$$ E[\text{ticket cost}|t] > \min(C_1, C_2, C_3) $$
+
+This simplified decision framework dramatically reduces our required sample size. Instead of needing precise parameter estimates, we only need enough data to determine which regime we're in. In practice, I've found this often requires only 8-10 days of observations.
+
+<also show monte carlo here to help observe the differences>
+
+
+## TODO: need to consider if 8-10 days of observations are worth not buying an annual pass for. 
+
+
+## More things to consider
+
+While the theory is elegant, there are additional real-world considerations that would help further improve our model that I have not discussed. 
+
+### Temporal Variations
+
+Parking officers are only human, and enforcement patterns aren’t uniform throughout the day. If, for example, I notice that patrol frequency tends to peak during mid-morning and early afternoon hours, I can modify the risk function to account for this:
+
+$$ h(t,\text{TOD}) = XY \cdot \frac{1}{4} \cdot (1 - e^{-\lambda t}) \cdot \phi(\text{TOD}) $$
+
+where $\phi(\text{TOD})$ is a time-of-day adjustment factor.
+
+### Spatial Correlations
+
+The four-zone system introduces spatial dependencies that can be leveraged. Imagine that you observed an enforcer in the Blue Zone while moving your car. The probability of immediate enforcement in the Purple Zone, furthest away from the Blue Zone, decreases significantly. This creates opportunities for strategic zone selection.
+
+### Reframing Cost-Benefit
+
+The true cost of moving your car isn’t just the time that was spent walking. At minimum, it should also include the loss in productivity from the required context switching. Gloria Mark, the study lead for [“The Cost of Interrupted Work”](https://ics.uci.edu/~gmark/chi08-mark.pdf), estimates an average of *23 minutes and 15 seconds* to get back to the task. When every minute of productivity matters, the cost-benefit framework should be modified to reflect this. 
+
+
+## Beyond Parking
+
+Using the parking puzzle, we explored survival analysis and bayesian learning, but I believe that the true lessons come from broader principles in risk calculation and decision theory.
+
+### The Value of Imperfect Information
+
+We often do not need perfect information to make significantly better decisions. Understanding the key decision boundaries is frequently more valuable than precise parameter estimation.
+
+### Dynamic Risk Assessment
+
+The risk isn’t static - it evolves based on both time and previous observations. This dynamic nature appears in many real-world problems, from financial trading to resource allocation. 
+
+### Practical Bayesian Analysis
+
+Sometimes the most valuable application of Bayesian methods isn’t in getting precise parameter estimates, but in updating our decision boundaries based on accumulated evidence.
+
+Risk analysis
+Whether you're managing parking tickets, optimizing business processes, or making investment decisions, the core principles remain the same: understand your risk function, identify key decision thresholds, and gather just enough data to make informed decisions.
+
+## TODO: decide to shape the narrative towards (1) this is what you are supposed to do in risk analysis or (2) these are the ways to consider this problem, risk analysis being the most practical one. 
