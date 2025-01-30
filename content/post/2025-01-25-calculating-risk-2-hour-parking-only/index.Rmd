@@ -23,7 +23,7 @@ knitr::include_graphics("/Users/youbeenshim/Documents/gentle-grapefruit/content/
  Moreover, consider:
 
 * four distant parking zones: Purple, Coral, Lime, and Blue.
-* <abbr title="we'll ignore that some spaces allow for 3-hour parking for simplicity">a nominal "2-hour" limit</abbr>
+* a nominal <abbr title="we'll ignore that some spaces allow for 3-hour parking for simplicity">"2-hour"</abbr> limit
 * $65 ticket for violations
 * $15 day-pass avaialbe for purchase
 * $900 annual pass that allows unlimited parking
@@ -42,52 +42,273 @@ Setting aside our responsibilities as law-abiding, rule-following, upright citiz
 The true constrain isn't time itself, but rather the probability of being observed by an enforcement officer. 
 
 
-## 
+## the Framework
 
 Let’s discuss what we don’t know. In our basic probability model, two key parameters are unknown:
-- $X$: The number of parking enforcers
-- $Y$: The patrol rate (which we'll define as zones visited per hour)
+
+- $E$: The number of parking enforcers
+- $R$: The patrol rate (which we can define as zones visited per hour)
 
 Again, see that the probability of getting a ticket (what we really care about) isn’t just a function of time - it’s a function of being observed when we have gone beyond the time limit. This is where survival analysis becomes particularly useful. 
 
-For any given time $t$ beyond the 2-hour mark, we can model the survival function $S(t)$ as the probability of not receiving a ticket up to time $t$. In mathematical terms:
+For any given time $t$ beyond the 2-hour mark, we can model the survival function $S(t)$ as the probability of not receiving a ticket up to time $t$:
 
 $$ S(t) = P(T > t) $$
 
 where $T$ is the time until receiving a ticket.
 
-The hazard function $h(t)$, representing the instantaneous rate of receiving a ticket at time $t$ given survival up to that point, can be expressed as:
+We can also represent the instantaneous rate of receiving a ticket at time $t$ given survival up to that point using the hazard function $h(t)$:
 
 $$ h(t) = \lim_{\Delta t \to 0} \frac{P(t \leq T < t + \Delta t | T \geq t)}{\Delta t} $$
 
-In our case, this hazard function is influenced by both $X$ and $Y$. We can model it as:
+In our case, this hazard function is influenced by both $E$ and $R$:
 
-$$ h(t) = XY \cdot \frac{1}{4} \cdot (1 - e^{-\lambda t}) $$
+$$ h(t) = E \cdot R \cdot \frac{1}{4} \cdot (1 - e^{-\lambda t}) $$
 
-where:
+where
+
 - $\frac{1}{4}$ represents the probability of an enforcer being in your specific zone
 - $(1 - e^{-\lambda t})$ models the increasing probability of being recognized as a violator as time passes
 - $\lambda$ is a parameter that controls how quickly the probability of recognition increases
+
+```{r, message=FALSE, warning=FALSE}
+# hazard rate
+calculate_hazard <- function(t, E, R, lambda = 0.5) {
+  # E: number of Enforcement officers
+  # R: patrol Rate (zones per hour)
+  # lambda: recognition rate
+  # 1/4: probability of being in specific zone
+  return(E * R * (1/4) * (1 - exp(-lambda * t)))
+}
+```
 
 This gives us our cumulative risk function:
 
 $$ R(t) = 1 - \exp\left(-\int_0^t h(u)du\right) $$
 
+```{r, message=FALSE, warning=FALSE}
+# cumulative risk
+calculate_risk <- function(t, E, R, lambda = 0.5) {
+  time_steps <- seq(0, t, length.out = 100)
+  dt <- time_steps[2] - time_steps[1]
+  
+  cumulative_hazard <- sum(calculate_hazard(time_steps, E, R, lambda)) * dt
+  return(1 - exp(-cumulative_hazard))
+  
+  # NOTE: 
+  # return(exp(-cumulative_hazard)) 
+  # would instead return survival probability
+}
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+# survival probability
+calculate_survival <- function(t, E, R, lambda = 0.5) {
+  time_steps <- seq(0, t, length.out = 100)
+  dt <- time_steps[2] - time_steps[1]
+  
+  cumulative_hazard <- sum(calculate_hazard(time_steps, E, R, lambda)) * dt
+  return(exp(-cumulative_hazard))
+}
+```
+
+
 The expected cost $C(t)$ for any given overstay duration $t$ can then be calculated as:
 
-$$ C(t) = 200 \cdot R(t) $$
+$$ C(t) = 65 \cdot R(t) $$
 
-This framework allows us to start analyzing the real risk profile of different parking strategies. 
+```{r, message=FALSE, warning=FALSE}
+# expected cost
+calculate_cost <- function(t, E, R, lambda = 0.5, ticket_cost = 65) {
+  return(ticket_cost * calculate_risk(t, E, R, lambda))
+}
+```
 
-TODO:
-Include the visualization of the survival analysis function here. 
 
-## definitely include:
-Using the survivor analysis to pick a time
+## the Visualization
+
+In order to visualize the hazard function, I'm going to generate three scenarios by varying the values for *'n_parking_officer'* and *'patrol_rate'*.
+```{r, message=FALSE, warning=FALSE}
+# different enforcement scenarios
+params <- list(
+  c(E = 2, R = 2),    # Low enforcement:    2 officers, 2 zones per hour
+  c(E = 4, R = 3),    # Medium enforcement: 4 officers, 3 zones per hour
+  c(E = 6, R = 4)     # High enforcement:   6 officers, 4 zones per hour
+)
+```
+
+<details><summary>click here to for full code to generate sample data</summary>
+
+The code below takes the *calculate_* functions from above and applies the conditions specified in *params*. 
+
+```{r, message=FALSE, warning=FALSE}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+
+# baseline data - charting points up to 4 hours past limit
+time_points <- seq(0, 4, by = 0.1)
+
+# different enforcement scenarios
+params <- list(
+  c(E = 2, R = 2),    # Low enforcement:    2 officers, 2 zones per hour
+  c(E = 4, R = 3),    # Medium enforcement: 4 officers, 3 zones per hour
+  c(E = 6, R = 4)     # High enforcement:   6 officers, 4 zones per hour
+)
+
+# data frame - hazard function plot
+hazard_data <- expand.grid(
+  time = time_points,
+  scenario = c("Low", "Medium", "High")
+)
+
+hazard_data$rate <- mapply(
+  function(t, s) {
+    p <- params[[switch(s, Low = 1, Medium = 2, High = 3)]]
+    calculate_hazard(t, p["E"], p["R"])
+  },
+  hazard_data$time,
+  hazard_data$scenario
+)
+
+# data frame - survival probability plot
+survival_data <- expand.grid(
+  time = time_points,
+  scenario = c("Low", "Medium", "High")
+)
+
+survival_data$probability <- mapply(
+  function(t, s) {
+    p <- params[[switch(s, Low = 1, Medium = 2, High = 3)]]
+    calculate_survival(t, p["E"], p["R"])
+  },
+  survival_data$time,
+  survival_data$scenario
+)
+
+# data frame - risk function plot
+risk_data <- expand.grid(
+  time = time_points,
+  scenario = c("Low", "Medium", "High")
+)
+
+risk_data$probability <- mapply(
+  function(t, s) {
+    p <- params[[switch(s, Low = 1, Medium = 2, High = 3)]]
+    calculate_risk(t, p["E"], p["R"])
+  },
+  risk_data$time,
+  risk_data$scenario
+)
+
+# data frame - cost function plot
+cost_data <- risk_data
+cost_data$cost <- cost_data$probability * 65  # ticket cost = $65 
+```
+</details>
+
+### Hazard Function
+
+<details><summary>click here for ggplot</summary>
+```{r, message=FALSE, warning=FALSE}
+hazard_plot <- ggplot(hazard_data, aes(x = time, y = rate, color = scenario)) +
+  geom_line(size = 1.2) +
+  labs(
+    title = "Hazard Rate for Parking Ticket",
+    subtitle = "Risk of getting a ticket at each moment, given no ticket so far",
+    x = "Hours Beyond 2-Hour Limit",
+    y = "Instantaneous Risk Rate",
+    color = "Enforcement Level"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 14, face = "bold"),
+    plot.subtitle = element_text(size = 12),
+    legend.position = "bottom"
+  ) +
+  scale_color_brewer(palette = "Set2")
+```
+</details>
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+print(hazard_plot)
+```
+
+The plot above visualizes what happens after you've already been parked for the initial 2-hour limit. 
+
+We're looking at three different scenarios - *Low*, *Medium*, and *High* enforcement levels - each represented by a different colored line. Think of each line as showing how "*aggressive*" the ticketing becomes at any given moment. The steeper the line, the more rapidly your risk is increasing. Notice how all three lines start at zero (when you first exceed the limit) and curve upward, but at different rates.
+
+The low enforcement (green line) shows that even after 4 full hours beyond the limit, the rate barely reaches 1.0. In contrast, high enforcement (blue line) shows that within the first hour of exceeding the limit, the risk shoots up to beyond 2.0 - an extremely aggressive ticketing environment. 
+
+While convenient, *hazard* is a difficult concept to digest. Thankfully, we also have the following plots:
+
+### Survival Probability & Cumulative Risk
+
+<details><summary>click here for ggplot</summary>
+```{r, message=FALSE, warning=FALSE}
+survival_prob_plot <- ggplot(survival_data, aes(x = time, y = probability, color = scenario)) +
+  geom_line(size = 1.2) +
+  labs(
+    title = "Survival Probability for Parking Violation",
+    subtitle = "Probability of not receiving a ticket over time",
+    x = "Hours Beyond 2-Hour Limit",
+    y = "Survival Probability",
+    color = "Enforcement Level"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 14, face = "bold"),
+    plot.subtitle = element_text(size = 12),
+    legend.position = "bottom"
+  ) +
+  scale_color_brewer(palette = "Set2") +
+  scale_y_continuous(labels = scales::percent)
+
+
+cumulative_risk_plot <- ggplot(risk_data, aes(x = time, y = probability, color = scenario)) +
+  geom_line(size = 1.2) +
+  labs(
+    title = "Cumulative Risk of Parking Ticket",
+    subtitle = "Probability of receiving a ticket by each time point",
+    x = "Hours Beyond 2-Hour Limit",
+    y = "Cumulative Risk",
+    color = "Enforcement Level"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 14, face = "bold"),
+    plot.subtitle = element_text(size = 12),
+    legend.position = "bottom"
+  ) +
+  scale_color_brewer(palette = "Set2") +
+  scale_y_continuous(labels = scales::percent)
+```
+</details>
+
+```{r, figures-side, fig.show="hold", out.width="50%", message=FALSE, warning=FALSE, echo=FALSE}
+print(survival_prob_plot)
+print(cumulative_risk_plot)
+```
+
+One the left, survival probability plot shows your chances of "surviving" without a ticket over time. In the high enforcement scenario, within just one hour of exceeding the limit, your chances of remaining ticket-free have plummeted to about 30%. Low enforcement scenario shows a more generous 70% chance of avoiding a ticket at the same 1-hour mark. 
+
+Cumulative risk plot on the right essentially <abbr title="notice how they are mirror images of each other">flips</abbr> this perspective. Instead of showing your chances of avoiding a ticket, it shows your chances of getting one. At any given time point, the probabilities in these two plots add up to 100%. Notice how, for example, after 2 hours beyond the limit in the medium enforcement scenario (orange line), your survival probability is about 15%, while your cumulative risk is about 85%.
+
+In terms of decision-making, one particularly interesting feature is how the curves flatten out in both plots after 2-3 hours. In our example, this is easy to explain - you only get 1 ticket a day. So even if the hazard rate for the high enforcement scenario at the 1-hour mark was above a 2, all it means is that the "flattening" of the curve occurred earlier and more dramatically. 
+
+Using this framework allows us to start analyzing the real risk profile of different strategies.
+
+You could, for instance, look at the survival probability plot to find where it crosses 50% - that's your coin flip moment. 
+
+Another way to use these plots would be to observe that, the first hour is generally the most critical decision point. That is when your risk is increasing most rapidly. 
+
+
+
+
 
 ## Learning from Limited Data
 
-Having established our risk mode, we face a practical challenge: how do we estimate number_of_enforcers and patrol_rate using our day-to-day experiences? 
+Having established our risk mode, we face a practical challenge: how do we estimate *'number_of_enforcers'* and *'patrol_rate'* using our day-to-day experiences? 
 
 While not perfect, each day we park provides two key pieces of information: the duration we exceeded the limit by and whether or not we received a ticket. This also mirrors our reality: each data point that we accumulate has a cost attached to it. 
 
@@ -105,6 +326,114 @@ $$ Y \sim \text{Gamma}(\alpha_Y, \beta_Y) $$
 
 The question becomes: how many observations do we need for reliable estimates? 
 
+```{r}
+# Load required libraries
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(purrr)
+
+# Set random seed for reproducibility
+set.seed(42)
+
+# True parameters we're trying to estimate
+TRUE_X <- 4  # Number of enforcement officers
+TRUE_Y <- 3  # Patrol rate
+
+# Function to simulate one day's observation
+simulate_day <- function(X, Y, overtime_hours = 1) {
+  # Probability of getting a ticket within overtime_hours
+  prob <- 1 - exp(-X * Y * (1/4) * overtime_hours)
+  return(rbinom(1, 1, prob))  # 1 if ticket received, 0 if not
+}
+
+# Function to estimate parameters from observations
+estimate_parameters <- function(observations) {
+  # Simple moment-based estimator
+  # If p is probability of ticket, then -log(1-p) = X*Y*(1/4)*t
+  p <- mean(observations)
+  if (p == 1) p <- 0.99  # Handle edge case
+  if (p == 0) p <- 0.01  # Handle edge case
+  
+  # We can only estimate the product X*Y from this data
+  XY_estimate <- -log(1-p) * 4  # Multiply by 4 to account for zone probability
+  
+  # Return estimates (assuming X and Y are equal for simplicity)
+  sqrt_est <- sqrt(XY_estimate)
+  return(c(sqrt_est, sqrt_est))
+}
+
+# Function to run one complete simulation path
+simulate_path <- function(n_days) {
+  # Generate daily observations
+  observations <- map_dbl(1:n_days, ~simulate_day(TRUE_X, TRUE_Y))
+  
+  # Calculate running estimates
+  estimates <- map(1:n_days, function(i) {
+    if (i < 5) return(c(NA, NA))  # Need minimum observations
+    estimate_parameters(observations[1:i])
+  })
+  
+  # Convert to data frame
+  data.frame(
+    day = 1:n_days,
+    X_est = map_dbl(estimates, ~.[1]),
+    Y_est = map_dbl(estimates, ~.[2])
+  )
+}
+
+# Run multiple simulation paths
+n_sims <- 100
+n_days <- 40
+
+simulation_results <- map_dfr(1:n_sims, function(sim) {
+  simulate_path(n_days) %>%
+    mutate(simulation = sim)
+})
+
+# Calculate confidence intervals
+ci_data <- simulation_results %>%
+  group_by(day) %>%
+  summarise(
+    X_mean = mean(X_est, na.rm = TRUE),
+    X_lower = quantile(X_est, 0.025, na.rm = TRUE),
+    X_upper = quantile(X_est, 0.975, na.rm = TRUE),
+    Y_mean = mean(Y_est, na.rm = TRUE),
+    Y_lower = quantile(Y_est, 0.025, na.rm = TRUE),
+    Y_upper = quantile(Y_est, 0.975, na.rm = TRUE)
+  )
+
+# Create convergence plot
+ggplot() +
+  # Plot individual simulation paths with low opacity
+  geom_line(data = simulation_results, 
+            aes(x = day, y = X_est, group = simulation),
+            alpha = 0.1, color = "blue") +
+  # Plot mean estimate
+  geom_line(data = ci_data,
+            aes(x = day, y = X_mean),
+            color = "darkblue", size = 1) +
+  # Plot confidence intervals
+  geom_ribbon(data = ci_data,
+              aes(x = day, ymin = X_lower, ymax = X_upper),
+              fill = "blue", alpha = 0.2) +
+  # Add true parameter value line
+  geom_hline(yintercept = TRUE_X, linetype = "dashed", color = "red") +
+  # Customize the plot
+  labs(title = "Convergence of Parameter Estimates",
+       subtitle = "100 simulation paths with 95% confidence intervals",
+       x = "Number of Days Observed",
+       y = "Estimated Number of Enforcement Officers (X)") +
+  theme_minimal() +
+  # Add annotation for convergence
+  annotate("rect", xmin = 20, xmax = 30, ymin = 3.5, ymax = 4.5,
+           fill = "yellow", alpha = 0.2) +
+  annotate("text", x = 25, y = 3.3,
+           label = "Convergence Zone\n(20-30 days)",
+           size = 3)
+```
+
+
 TODO: visualize the simulation studies here
 <Through simulation studies, I've found that about 20-30 workdays of data provide reasonable convergence for decision-making purposes>. Using the (probably monte carlo), it looks like about 20-30 workdays of data provide reasonable convergence for decision-making purposes. 
 
@@ -112,7 +441,7 @@ However, practically speaking: we actually don’t need precise estimates of X a
 
 ## When "Good Enough" Is Actually Perfect
 
-Wwe don't need to know exactly how many enforcement officers are patrolling or their exact rate of coverage. What we really need to know is when the risk crosses certain thresholds that would change our behavior.
+I know- I know- it is a lot of commitment (read: cost) to collect that much data. Thankfully, we don't need to know exactly how many enforcement officers are patrolling or their exact rate of coverage. What we really need to know is when the risk crosses certain thresholds that would change our behavior.
 
 Let's define three key thresholds:
 $$ C_1(t) = \text{cost of moving car once per day} $$
@@ -123,7 +452,341 @@ Our optimal strategy changes when:
 
 $$ E[\text{ticket cost}|t] > \min(C_1, C_2, C_3) $$
 
+```{r}
+# Load required libraries
+library(tidyverse)
+library(ggplot2)
+
+# Define our parameters
+X <- 2       # Number of enforcement officers
+Y <- 3       # Zones patrolled per hour
+TICKET_COST <- 65
+ZONES <- 4   # Total number of parking zones
+LAMBDA <- 0.5  # Parameter for recognition probability increase
+MOVE_COST <- 15 # Cost per move (in terms of time and effort)
+
+# Function to calculate risk at time t
+calculate_risk <- function(t, X, Y) {
+  # No risk for first 2 hours
+  if (t <= 2) return(0)
+  
+  # Calculate risk only for time beyond 2-hour mark
+  excess_time <- t - 2
+  
+  # Basic hazard rate calculation
+  h <- X * Y * (1/ZONES) * (1 - exp(-LAMBDA * excess_time))
+  
+  # Calculate cumulative risk (probability of getting a ticket)
+  risk <- 1 - exp(-h * excess_time)
+  
+  # Ensure risk doesn't exceed 1
+  return(pmin(1, risk))
+}
+
+# Function to calculate total risk for a workday with n moves
+calculate_workday_risk <- function(total_time, n_moves) {
+  if (n_moves == 0) {
+    # For no moves, single continuous risk period after first 2 hours
+    return(calculate_risk(total_time, X, Y))
+  } else {
+    # Calculate segment length (time between moves)
+    segment_length <- total_time / (n_moves + 1)
+    
+    # Risk for each segment
+    segment_risk <- calculate_risk(segment_length, X, Y)
+    
+    # Probability of getting at least one ticket across all segments
+    total_risk <- 1 - (1 - segment_risk)^(n_moves + 1)
+    
+    return(total_risk)
+  }
+}
+
+# Create time sequence for x-axis (in hours)
+time_seq <- seq(0, 8, by = 0.1)
+
+# Calculate expected costs for different strategies
+results <- tibble(
+  time = time_seq,
+  # Strategy 0: Don't move at all
+  no_moves = TICKET_COST * sapply(time_seq, function(t) calculate_workday_risk(t, 0)),
+  
+  # Strategy 1: Move once
+  one_move = MOVE_COST + TICKET_COST * sapply(time_seq, function(t) calculate_workday_risk(t, 1)),
+  
+  # Strategy 2: Move twice
+  two_moves = 2 * MOVE_COST + TICKET_COST * sapply(time_seq, function(t) calculate_workday_risk(t, 2)),
+  
+  # Strategy 3: Move three times
+  three_moves = 3 * MOVE_COST + TICKET_COST * sapply(time_seq, function(t) calculate_workday_risk(t, 3))
+)
+
+# Reshape data for plotting
+plot_data <- results %>%
+  pivot_longer(
+    cols = c(no_moves, one_move, two_moves, three_moves),
+    names_to = "strategy",
+    values_to = "cost"
+  ) %>%
+  mutate(
+    strategy = factor(
+      strategy,
+      levels = c("no_moves", "one_move", "two_moves", "three_moves"),
+      labels = c("No Moves", "Move Once", "Move Twice", "Move Three Times")
+    )
+  )
+
+# Create the visualization
+ggplot(plot_data, aes(x = time, y = cost, color = strategy)) +
+  geom_line(size = 1) +
+  # Add vertical line at 2 hours to show when risk starts
+  geom_vline(xintercept = 2, linetype = "dashed", alpha = 0.3) +
+  annotate("text", x = 2.2, y = max(plot_data$cost), 
+           label = "Risk begins", angle = 90, alpha = 0.5) +
+  labs(
+    title = "Cost Comparison of Different Parking Strategies",
+    subtitle = paste0(
+      "Based on ", X, " officers patrolling ", Y, " zones per hour\n",
+      "Ticket cost: $", TICKET_COST, ", Move cost: $", MOVE_COST,
+      "\nRisk starts after 2-hour grace period"
+    ),
+    x = "Workday Duration (hours)",
+    y = "Expected Daily Cost ($)",
+    color = "Strategy"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", size = 14),
+    plot.subtitle = element_text(size = 12),
+    legend.position = "bottom",
+    legend.title = element_text(size = 10),
+    legend.text = element_text(size = 9)
+  ) +
+  scale_y_continuous(
+    breaks = seq(0, max(plot_data$cost), by = 10),
+    labels = scales::dollar_format()
+  ) +
+  scale_color_brewer(palette = "Set2")
+```
+
+```{r}
+# Load required libraries
+library(tidyverse)
+library(ggplot2)
+
+# Fixed parameters
+WORKDAY_LENGTH <- 8  # Fixed 8-hour workday
+TICKET_COST <- 65
+ZONES <- 4
+LAMBDA <- 0.5
+MOVE_COST <- 15
+
+# Function to calculate risk for a single period
+calculate_period_risk <- function(period_length, num_officers, patrol_rate) {
+  # No risk for first 2 hours
+  if (period_length <= 2) return(0)
+  
+  # Calculate risk only for time beyond 2-hour mark
+  excess_time <- period_length - 2
+  
+  # Basic hazard rate calculation
+  h <- num_officers * patrol_rate * (1/ZONES) * (1 - exp(-LAMBDA * excess_time))
+  
+  # Calculate cumulative risk
+  risk <- 1 - exp(-h * excess_time)
+  
+  return(pmin(1, risk))
+}
+
+# Function to calculate total workday risk with n moves
+calculate_strategy_cost <- function(num_officers, patrol_rate, num_moves) {
+  # Calculate length of each period between moves
+  period_length <- WORKDAY_LENGTH / (num_moves + 1)
+  
+  # Calculate risk for each period
+  period_risk <- calculate_period_risk(period_length, num_officers, patrol_rate)
+  
+  # Total risk of getting at least one ticket
+  total_risk <- 1 - (1 - period_risk)^(num_moves + 1)
+  
+  # Return total expected cost (movement costs + expected ticket cost)
+  return((num_moves-1) * MOVE_COST + TICKET_COST * total_risk)
+}
+
+# Create parameter grid
+num_officers_seq <- seq(0.5, 5, by = 0.1)
+patrol_rates_seq <- seq(0.5, 5, by = 0.1)
+
+# Calculate costs for each strategy across parameter grid
+results <- expand.grid(
+  num_officers = num_officers_seq,
+  patrol_rate = patrol_rates_seq
+) %>%
+  mutate(
+    no_moves = mapply(calculate_strategy_cost, num_officers, patrol_rate, 0),
+    one_move = mapply(calculate_strategy_cost, num_officers, patrol_rate, 1),
+    two_moves = mapply(calculate_strategy_cost, num_officers, patrol_rate, 2),
+    three_moves = mapply(calculate_strategy_cost, num_officers, patrol_rate, 3)
+  ) %>%
+  mutate(
+    optimal_cost = pmin(no_moves, one_move, two_moves, three_moves),
+    optimal_strategy = case_when(
+      optimal_cost == no_moves ~ "No Moves",
+      optimal_cost == one_move ~ "Move Once",
+      optimal_cost == two_moves ~ "Move Twice",
+      TRUE ~ "Move Three Times"
+    )
+  )
+
+# Create the visualization
+ggplot(results, aes(x = patrol_rate, y = num_officers, fill = optimal_strategy)) +
+  geom_raster(interpolate = TRUE) +
+  scale_fill_brewer(palette = "Set2") +
+  labs(
+    title = "Optimal Parking Strategy Based on Enforcement Parameters",
+    subtitle = paste0(
+      "8-hour workday, $", TICKET_COST, " ticket, $", MOVE_COST, " per move\n",
+      "Shows regions where each strategy minimizes expected cost"
+    ),
+    x = "Patrol Rate (zones per hour)",
+    y = "Number of Enforcement Officers",
+    fill = "Optimal Strategy"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", size = 14),
+    plot.subtitle = element_text(size = 12),
+    legend.position = "bottom"
+  ) +
+  # Add contour lines showing expected cost
+  geom_contour(aes(z = optimal_cost), 
+               color = "white", alpha = 0.5,
+               breaks = seq(0, max(results$optimal_cost), by = 10)) +
+  # Add point for original example parameters
+  geom_point(aes(x = 3, y = 2), color = "red", size = 3) +
+  annotate("text", x = 3.2, y = 2, 
+           label = "Original Example\nParameters", 
+           color = "red", hjust = 0)
+
+# Add a second plot showing cost curves at the original example point
+example_point <- results %>%
+  filter(near(num_officers, 2, tol = 0.1) & near(patrol_rate, 3, tol = 0.1)) %>%
+  select(no_moves, one_move, two_moves, three_moves) %>%
+  pivot_longer(everything(), 
+               names_to = "strategy", 
+               values_to = "cost")
+```
+
+```{r}
+# Load required libraries
+library(tidyverse)
+library(ggplot2)
+
+# Define our parameters
+WORKDAY_LENGTH <- 8
+TICKET_COST <- 65
+ZONES <- 4
+LAMBDA <- 0.5
+FIRST_MOVE_COST <- 5    # Cost of first move
+ADDITIONAL_MOVE_COST <- 15  # Cost of subsequent moves
+ANNUAL_PASS_COST <- 8500
+WORKING_DAYS_PER_YEAR <- 250  # Approximate number of working days
+
+# Function to calculate daily cost for a strategy
+calculate_daily_cost <- function(num_officers, patrol_rate, num_moves) {
+  # Calculate movement costs
+  move_costs <- if(num_moves == 0) {
+    0
+  } else {
+    FIRST_MOVE_COST + (num_moves - 1) * ADDITIONAL_MOVE_COST
+  }
+  
+  # Calculate risk of ticket
+  period_length <- WORKDAY_LENGTH / (num_moves + 1)
+  excess_time <- max(0, period_length - 2)
+  h <- num_officers * patrol_rate * (1/ZONES) * (1 - exp(-LAMBDA * excess_time))
+  period_risk <- 1 - exp(-h * excess_time)
+  total_risk <- 1 - (1 - period_risk)^(num_moves + 1)
+  
+  # Return total daily cost
+  return(move_costs + TICKET_COST * total_risk)
+}
+
+# Calculate annual costs across parameter space
+num_officers_seq <- seq(0.5, 5, by = 0.1)
+patrol_rates_seq <- seq(0.5, 5, by = 0.1)
+
+results <- expand.grid(
+  num_officers = num_officers_seq,
+  patrol_rate = patrol_rates_seq
+) %>%
+  mutate(
+    no_moves_annual = WORKING_DAYS_PER_YEAR * 
+      mapply(calculate_daily_cost, num_officers, patrol_rate, 0),
+    one_move_annual = WORKING_DAYS_PER_YEAR * 
+      mapply(calculate_daily_cost, num_officers, patrol_rate, 1),
+    two_moves_annual = WORKING_DAYS_PER_YEAR * 
+      mapply(calculate_daily_cost, num_officers, patrol_rate, 2),
+    three_moves_annual = WORKING_DAYS_PER_YEAR * 
+      mapply(calculate_daily_cost, num_officers, patrol_rate, 3),
+    parking_pass = ANNUAL_PASS_COST
+  ) %>%
+  mutate(
+    optimal_cost = pmin(no_moves_annual, one_move_annual, 
+                       two_moves_annual, three_moves_annual, 
+                       parking_pass),
+    optimal_strategy = case_when(
+      optimal_cost == parking_pass ~ "Buy Annual Pass",
+      optimal_cost == no_moves_annual ~ "No Moves",
+      optimal_cost == one_move_annual ~ "Move Once",
+      optimal_cost == two_moves_annual ~ "Move Twice",
+      TRUE ~ "Move Three Times"
+    )
+  )
+
+# Create the visualization
+ggplot(results, aes(x = patrol_rate, y = num_officers, fill = optimal_strategy)) +
+  geom_raster(interpolate = TRUE) +
+  scale_fill_brewer(palette = "Set3") +
+  labs(
+    title = "Optimal Annual Parking Strategy Including Parking Pass Option",
+    subtitle = paste0(
+      "Annual pass: $", ANNUAL_PASS_COST,
+      ", First move: $", FIRST_MOVE_COST,
+      ", Additional moves: $", ADDITIONAL_MOVE_COST, "\n",
+      "Based on ", WORKING_DAYS_PER_YEAR, " working days per year"
+    ),
+    x = "Patrol Rate (zones per hour)",
+    y = "Number of Enforcement Officers",
+    fill = "Optimal Strategy"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", size = 14),
+    plot.subtitle = element_text(size = 12),
+    legend.position = "bottom"
+  ) +
+  # Add contour lines showing annual cost
+  geom_contour(aes(z = optimal_cost), 
+               color = "white", alpha = 0.5,
+               breaks = seq(0, max(results$optimal_cost), by = 1000)) +
+  # Add point for original example parameters
+  geom_point(aes(x = 3, y = 2), color = "red", size = 3) +
+  annotate("text", x = 3.2, y = 2, 
+           label = "Original Example\nParameters", 
+           color = "red", hjust = 0)
+
+# Add analysis of cost differential at example point
+example_point <- filter(results, 
+                       near(num_officers, 2, tol = 0.1) & 
+                       near(patrol_rate, 3, tol = 0.1))
+```
+
+
 This simplified decision framework dramatically reduces our required sample size. Instead of needing precise parameter estimates, we only need enough data to determine which regime we're in. In practice, I've found this often requires only 8-10 days of observations.
+
+
+
 
 <also show monte carlo here to help observe the differences>
 

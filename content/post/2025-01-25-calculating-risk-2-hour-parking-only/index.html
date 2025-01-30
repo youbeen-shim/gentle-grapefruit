@@ -25,7 +25,7 @@ Figure 1: Parking Zones in Downtown Palo ALto
 <p>Moreover, consider:</p>
 <ul>
 <li>four distant parking zones: Purple, Coral, Lime, and Blue.</li>
-<li><abbr title="we'll ignore that some spaces allow for 3-hour parking for simplicity">a nominal “2-hour” limit</abbr></li>
+<li>a nominal <abbr title="we'll ignore that some spaces allow for 3-hour parking for simplicity">“2-hour”</abbr> limit</li>
 <li>$65 ticket for violations</li>
 <li>$15 day-pass avaialbe for purchase</li>
 <li>$900 annual pass that allows unlimited parking</li>
@@ -42,38 +42,217 @@ Figure 1: Parking Zones in Downtown Palo ALto
 <p>The true constrain isn’t time itself, but rather the probability of being observed by an enforcement officer.</p>
 </div>
 </div>
-<div id="section" class="section level2">
-<h2></h2>
-<p>Let’s discuss what we don’t know. In our basic probability model, two key parameters are unknown:
-- <span class="math inline">\(X\)</span>: The number of parking enforcers
-- <span class="math inline">\(Y\)</span>: The patrol rate (which we’ll define as zones visited per hour)</p>
+<div id="the-framework" class="section level2">
+<h2>the Framework</h2>
+<p>Let’s discuss what we don’t know. In our basic probability model, two key parameters are unknown:</p>
+<ul>
+<li><span class="math inline">\(E\)</span>: The number of parking enforcers</li>
+<li><span class="math inline">\(R\)</span>: The patrol rate (which we can define as zones visited per hour)</li>
+</ul>
 <p>Again, see that the probability of getting a ticket (what we really care about) isn’t just a function of time - it’s a function of being observed when we have gone beyond the time limit. This is where survival analysis becomes particularly useful.</p>
-<p>For any given time <span class="math inline">\(t\)</span> beyond the 2-hour mark, we can model the survival function <span class="math inline">\(S(t)\)</span> as the probability of not receiving a ticket up to time <span class="math inline">\(t\)</span>. In mathematical terms:</p>
+<p>For any given time <span class="math inline">\(t\)</span> beyond the 2-hour mark, we can model the survival function <span class="math inline">\(S(t)\)</span> as the probability of not receiving a ticket up to time <span class="math inline">\(t\)</span>:</p>
 <p><span class="math display">\[ S(t) = P(T &gt; t) \]</span></p>
 <p>where <span class="math inline">\(T\)</span> is the time until receiving a ticket.</p>
-<p>The hazard function <span class="math inline">\(h(t)\)</span>, representing the instantaneous rate of receiving a ticket at time <span class="math inline">\(t\)</span> given survival up to that point, can be expressed as:</p>
+<p>We can also represent the instantaneous rate of receiving a ticket at time <span class="math inline">\(t\)</span> given survival up to that point using the hazard function <span class="math inline">\(h(t)\)</span>:</p>
 <p><span class="math display">\[ h(t) = \lim_{\Delta t \to 0} \frac{P(t \leq T &lt; t + \Delta t | T \geq t)}{\Delta t} \]</span></p>
-<p>In our case, this hazard function is influenced by both <span class="math inline">\(X\)</span> and <span class="math inline">\(Y\)</span>. We can model it as:</p>
-<p><span class="math display">\[ h(t) = XY \cdot \frac{1}{4} \cdot (1 - e^{-\lambda t}) \]</span></p>
-<p>where:
-- <span class="math inline">\(\frac{1}{4}\)</span> represents the probability of an enforcer being in your specific zone
-- <span class="math inline">\((1 - e^{-\lambda t})\)</span> models the increasing probability of being recognized as a violator as time passes
-- <span class="math inline">\(\lambda\)</span> is a parameter that controls how quickly the probability of recognition increases</p>
+<p>In our case, this hazard function is influenced by both <span class="math inline">\(E\)</span> and <span class="math inline">\(R\)</span>:</p>
+<p><span class="math display">\[ h(t) = E \cdot R \cdot \frac{1}{4} \cdot (1 - e^{-\lambda t}) \]</span></p>
+<p>where</p>
+<ul>
+<li><span class="math inline">\(\frac{1}{4}\)</span> represents the probability of an enforcer being in your specific zone</li>
+<li><span class="math inline">\((1 - e^{-\lambda t})\)</span> models the increasing probability of being recognized as a violator as time passes</li>
+<li><span class="math inline">\(\lambda\)</span> is a parameter that controls how quickly the probability of recognition increases</li>
+</ul>
+<pre class="r"><code># hazard rate
+calculate_hazard &lt;- function(t, E, R, lambda = 0.5) {
+  # E: number of Enforcement officers
+  # R: patrol Rate (zones per hour)
+  # lambda: recognition rate
+  # 1/4: probability of being in specific zone
+  return(E * R * (1/4) * (1 - exp(-lambda * t)))
+}</code></pre>
 <p>This gives us our cumulative risk function:</p>
 <p><span class="math display">\[ R(t) = 1 - \exp\left(-\int_0^t h(u)du\right) \]</span></p>
+<pre class="r"><code># cumulative risk
+calculate_risk &lt;- function(t, E, R, lambda = 0.5) {
+  time_steps &lt;- seq(0, t, length.out = 100)
+  dt &lt;- time_steps[2] - time_steps[1]
+  
+  cumulative_hazard &lt;- sum(calculate_hazard(time_steps, E, R, lambda)) * dt
+  return(1 - exp(-cumulative_hazard))
+  
+  # NOTE: 
+  # return(exp(-cumulative_hazard)) 
+  # would instead return survival probability
+}</code></pre>
 <p>The expected cost <span class="math inline">\(C(t)\)</span> for any given overstay duration <span class="math inline">\(t\)</span> can then be calculated as:</p>
-<p><span class="math display">\[ C(t) = 200 \cdot R(t) \]</span></p>
-<p>This framework allows us to start analyzing the real risk profile of different parking strategies.</p>
-<p>TODO:
-Include the visualization of the survival analysis function here.</p>
+<p><span class="math display">\[ C(t) = 65 \cdot R(t) \]</span></p>
+<pre class="r"><code># expected cost
+calculate_cost &lt;- function(t, E, R, lambda = 0.5, ticket_cost = 65) {
+  return(ticket_cost * calculate_risk(t, E, R, lambda))
+}</code></pre>
 </div>
-<div id="definitely-include" class="section level2">
-<h2>definitely include:</h2>
-<p>Using the survivor analysis to pick a time</p>
+<div id="the-visualization" class="section level2">
+<h2>the Visualization</h2>
+<p>In order to visualize the hazard function, I’m going to generate three scenarios by varying the values for <em>‘n_parking_officer’</em> and <em>‘patrol_rate’</em>.</p>
+<pre class="r"><code># different enforcement scenarios
+params &lt;- list(
+  c(E = 2, R = 2),    # Low enforcement:    2 officers, 2 zones per hour
+  c(E = 4, R = 3),    # Medium enforcement: 4 officers, 3 zones per hour
+  c(E = 6, R = 4)     # High enforcement:   6 officers, 4 zones per hour
+)</code></pre>
+<details>
+<summary>
+click here to for full code to generate sample data
+</summary>
+<p>The code below takes the <em>calculate_</em> functions from above and applies the conditions specified in <em>params</em>.</p>
+<pre class="r"><code>library(ggplot2)
+library(dplyr)
+library(tidyr)
+
+# baseline data - charting points up to 4 hours past limit
+time_points &lt;- seq(0, 4, by = 0.1)
+
+# different enforcement scenarios
+params &lt;- list(
+  c(E = 2, R = 2),    # Low enforcement:    2 officers, 2 zones per hour
+  c(E = 4, R = 3),    # Medium enforcement: 4 officers, 3 zones per hour
+  c(E = 6, R = 4)     # High enforcement:   6 officers, 4 zones per hour
+)
+
+# data frame - hazard function plot
+hazard_data &lt;- expand.grid(
+  time = time_points,
+  scenario = c(&quot;Low&quot;, &quot;Medium&quot;, &quot;High&quot;)
+)
+
+hazard_data$rate &lt;- mapply(
+  function(t, s) {
+    p &lt;- params[[switch(s, Low = 1, Medium = 2, High = 3)]]
+    calculate_hazard(t, p[&quot;E&quot;], p[&quot;R&quot;])
+  },
+  hazard_data$time,
+  hazard_data$scenario
+)
+
+# data frame - survival probability plot
+survival_data &lt;- expand.grid(
+  time = time_points,
+  scenario = c(&quot;Low&quot;, &quot;Medium&quot;, &quot;High&quot;)
+)
+
+survival_data$probability &lt;- mapply(
+  function(t, s) {
+    p &lt;- params[[switch(s, Low = 1, Medium = 2, High = 3)]]
+    calculate_survival(t, p[&quot;E&quot;], p[&quot;R&quot;])
+  },
+  survival_data$time,
+  survival_data$scenario
+)
+
+# data frame - risk function plot
+risk_data &lt;- expand.grid(
+  time = time_points,
+  scenario = c(&quot;Low&quot;, &quot;Medium&quot;, &quot;High&quot;)
+)
+
+risk_data$probability &lt;- mapply(
+  function(t, s) {
+    p &lt;- params[[switch(s, Low = 1, Medium = 2, High = 3)]]
+    calculate_risk(t, p[&quot;E&quot;], p[&quot;R&quot;])
+  },
+  risk_data$time,
+  risk_data$scenario
+)
+
+# data frame - cost function plot
+cost_data &lt;- risk_data
+cost_data$cost &lt;- cost_data$probability * 65  # ticket cost = $65 </code></pre>
+</details>
+<div id="hazard-function" class="section level3">
+<h3>Hazard Function</h3>
+<details>
+<summary>
+click here for ggplot
+</summary>
+<pre class="r"><code>hazard_plot &lt;- ggplot(hazard_data, aes(x = time, y = rate, color = scenario)) +
+  geom_line(size = 1.2) +
+  labs(
+    title = &quot;Hazard Rate for Parking Ticket&quot;,
+    subtitle = &quot;Risk of getting a ticket at each moment, given no ticket so far&quot;,
+    x = &quot;Hours Beyond 2-Hour Limit&quot;,
+    y = &quot;Instantaneous Risk Rate&quot;,
+    color = &quot;Enforcement Level&quot;
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 14, face = &quot;bold&quot;),
+    plot.subtitle = element_text(size = 12),
+    legend.position = &quot;bottom&quot;
+  ) +
+  scale_color_brewer(palette = &quot;Set2&quot;)</code></pre>
+</details>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-9-1.png" width="672" /></p>
+<p>The plot above visualizes what happens after you’ve already been parked for the initial 2-hour limit.</p>
+<p>We’re looking at three different scenarios - <em>Low</em>, <em>Medium</em>, and <em>High</em> enforcement levels - each represented by a different colored line. Think of each line as showing how “<em>aggressive</em>” the ticketing becomes at any given moment. The steeper the line, the more rapidly your risk is increasing. Notice how all three lines start at zero (when you first exceed the limit) and curve upward, but at different rates.</p>
+<p>The low enforcement (green line) shows that even after 4 full hours beyond the limit, the rate barely reaches 1.0. In contrast, high enforcement (blue line) shows that within the first hour of exceeding the limit, the risk shoots up to beyond 2.0 - an extremely aggressive ticketing environment.</p>
+<p>While convenient, <em>hazard</em> is a difficult concept to digest. Thankfully, we also have the following plots:</p>
+</div>
+<div id="survival-probability-cumulative-risk" class="section level3">
+<h3>Survival Probability &amp; Cumulative Risk</h3>
+<details>
+<summary>
+click here for ggplot
+</summary>
+<pre class="r"><code>survival_prob_plot &lt;- ggplot(survival_data, aes(x = time, y = probability, color = scenario)) +
+  geom_line(size = 1.2) +
+  labs(
+    title = &quot;Survival Probability for Parking Violation&quot;,
+    subtitle = &quot;Probability of not receiving a ticket over time&quot;,
+    x = &quot;Hours Beyond 2-Hour Limit&quot;,
+    y = &quot;Survival Probability&quot;,
+    color = &quot;Enforcement Level&quot;
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 14, face = &quot;bold&quot;),
+    plot.subtitle = element_text(size = 12),
+    legend.position = &quot;bottom&quot;
+  ) +
+  scale_color_brewer(palette = &quot;Set2&quot;) +
+  scale_y_continuous(labels = scales::percent)
+
+
+cumulative_risk_plot &lt;- ggplot(risk_data, aes(x = time, y = probability, color = scenario)) +
+  geom_line(size = 1.2) +
+  labs(
+    title = &quot;Cumulative Risk of Parking Ticket&quot;,
+    subtitle = &quot;Probability of receiving a ticket by each time point&quot;,
+    x = &quot;Hours Beyond 2-Hour Limit&quot;,
+    y = &quot;Cumulative Risk&quot;,
+    color = &quot;Enforcement Level&quot;
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 14, face = &quot;bold&quot;),
+    plot.subtitle = element_text(size = 12),
+    legend.position = &quot;bottom&quot;
+  ) +
+  scale_color_brewer(palette = &quot;Set2&quot;) +
+  scale_y_continuous(labels = scales::percent)</code></pre>
+</details>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/figures-side-1.png" width="50%" /><img src="{{< blogdown/postref >}}index_files/figure-html/figures-side-2.png" width="50%" /></p>
+<p>One the left, survival probability plot shows your chances of “surviving” without a ticket over time. In the high enforcement scenario, within just one hour of exceeding the limit, your chances of remaining ticket-free have plummeted to about 30%. Low enforcement scenario shows a more generous 70% chance of avoiding a ticket at the same 1-hour mark.</p>
+<p>Cumulative risk plot on the right essentially <abbr title="notice how they are mirror images of each other">flips</abbr> this perspective. Instead of showing your chances of avoiding a ticket, it shows your chances of getting one. At any given time point, the probabilities in these two plots add up to 100%. Notice how, for example, after 2 hours beyond the limit in the medium enforcement scenario (orange line), your survival probability is about 15%, while your cumulative risk is about 85%.</p>
+<p>In terms of decision-making, one particularly interesting feature is how the curves flatten out in both plots after 2-3 hours. In our example, this is easy to explain - you only get 1 ticket a day. So even if the hazard rate for the high enforcement scenario at the 1-hour mark was above a 2, all it means is that the “flattening” of the curve occurred earlier and more dramatically.</p>
+<p>Using this framework allows us to start analyzing the real risk profile of different strategies.</p>
+<p>You could, for instance, look at the survival probability plot to find where it crosses 50% - that’s your coin flip moment.</p>
+<p>Another way to use these plots would be to observe that, the first hour is generally the most critical decision point. That is when your risk is increasing most rapidly.</p>
+</div>
 </div>
 <div id="learning-from-limited-data" class="section level2">
 <h2>Learning from Limited Data</h2>
-<p>Having established our risk mode, we face a practical challenge: how do we estimate number_of_enforcers and patrol_rate using our day-to-day experiences?</p>
+<p>Having established our risk mode, we face a practical challenge: how do we estimate <em>‘number_of_enforcers’</em> and <em>‘patrol_rate’</em> using our day-to-day experiences?</p>
 <p>While not perfect, each day we park provides two key pieces of information: the duration we exceeded the limit by and whether or not we received a ticket. This also mirrors our reality: each data point that we accumulate has a cost attached to it.</p>
 <p>Our likelihood function for a single observation can be expressed as:</p>
 <p><span class="math display">\[ L(X,Y|t,\text{ticket}) = \begin{cases}
@@ -84,19 +263,470 @@ R(t|X,Y) &amp; \text{if ticket received} \\
 <p><span class="math display">\[ X \sim \text{Poisson}(\lambda_X) \]</span>
 <span class="math display">\[ Y \sim \text{Gamma}(\alpha_Y, \beta_Y) \]</span></p>
 <p>The question becomes: how many observations do we need for reliable estimates?</p>
+<pre class="r"><code># Load required libraries
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(purrr)
+
+# Set random seed for reproducibility
+set.seed(42)
+
+# True parameters we&#39;re trying to estimate
+TRUE_X &lt;- 4  # Number of enforcement officers
+TRUE_Y &lt;- 3  # Patrol rate
+
+# Function to simulate one day&#39;s observation
+simulate_day &lt;- function(X, Y, overtime_hours = 1) {
+  # Probability of getting a ticket within overtime_hours
+  prob &lt;- 1 - exp(-X * Y * (1/4) * overtime_hours)
+  return(rbinom(1, 1, prob))  # 1 if ticket received, 0 if not
+}
+
+# Function to estimate parameters from observations
+estimate_parameters &lt;- function(observations) {
+  # Simple moment-based estimator
+  # If p is probability of ticket, then -log(1-p) = X*Y*(1/4)*t
+  p &lt;- mean(observations)
+  if (p == 1) p &lt;- 0.99  # Handle edge case
+  if (p == 0) p &lt;- 0.01  # Handle edge case
+  
+  # We can only estimate the product X*Y from this data
+  XY_estimate &lt;- -log(1-p) * 4  # Multiply by 4 to account for zone probability
+  
+  # Return estimates (assuming X and Y are equal for simplicity)
+  sqrt_est &lt;- sqrt(XY_estimate)
+  return(c(sqrt_est, sqrt_est))
+}
+
+# Function to run one complete simulation path
+simulate_path &lt;- function(n_days) {
+  # Generate daily observations
+  observations &lt;- map_dbl(1:n_days, ~simulate_day(TRUE_X, TRUE_Y))
+  
+  # Calculate running estimates
+  estimates &lt;- map(1:n_days, function(i) {
+    if (i &lt; 5) return(c(NA, NA))  # Need minimum observations
+    estimate_parameters(observations[1:i])
+  })
+  
+  # Convert to data frame
+  data.frame(
+    day = 1:n_days,
+    X_est = map_dbl(estimates, ~.[1]),
+    Y_est = map_dbl(estimates, ~.[2])
+  )
+}
+
+# Run multiple simulation paths
+n_sims &lt;- 100
+n_days &lt;- 40
+
+simulation_results &lt;- map_dfr(1:n_sims, function(sim) {
+  simulate_path(n_days) %&gt;%
+    mutate(simulation = sim)
+})
+
+# Calculate confidence intervals
+ci_data &lt;- simulation_results %&gt;%
+  group_by(day) %&gt;%
+  summarise(
+    X_mean = mean(X_est, na.rm = TRUE),
+    X_lower = quantile(X_est, 0.025, na.rm = TRUE),
+    X_upper = quantile(X_est, 0.975, na.rm = TRUE),
+    Y_mean = mean(Y_est, na.rm = TRUE),
+    Y_lower = quantile(Y_est, 0.025, na.rm = TRUE),
+    Y_upper = quantile(Y_est, 0.975, na.rm = TRUE)
+  )
+
+# Create convergence plot
+ggplot() +
+  # Plot individual simulation paths with low opacity
+  geom_line(data = simulation_results, 
+            aes(x = day, y = X_est, group = simulation),
+            alpha = 0.1, color = &quot;blue&quot;) +
+  # Plot mean estimate
+  geom_line(data = ci_data,
+            aes(x = day, y = X_mean),
+            color = &quot;darkblue&quot;, size = 1) +
+  # Plot confidence intervals
+  geom_ribbon(data = ci_data,
+              aes(x = day, ymin = X_lower, ymax = X_upper),
+              fill = &quot;blue&quot;, alpha = 0.2) +
+  # Add true parameter value line
+  geom_hline(yintercept = TRUE_X, linetype = &quot;dashed&quot;, color = &quot;red&quot;) +
+  # Customize the plot
+  labs(title = &quot;Convergence of Parameter Estimates&quot;,
+       subtitle = &quot;100 simulation paths with 95% confidence intervals&quot;,
+       x = &quot;Number of Days Observed&quot;,
+       y = &quot;Estimated Number of Enforcement Officers (X)&quot;) +
+  theme_minimal() +
+  # Add annotation for convergence
+  annotate(&quot;rect&quot;, xmin = 20, xmax = 30, ymin = 3.5, ymax = 4.5,
+           fill = &quot;yellow&quot;, alpha = 0.2) +
+  annotate(&quot;text&quot;, x = 25, y = 3.3,
+           label = &quot;Convergence Zone\n(20-30 days)&quot;,
+           size = 3)</code></pre>
+<pre><code>## Warning: Removed 400 rows containing missing values or values outside the scale range
+## (`geom_line()`).</code></pre>
+<pre><code>## Warning: Removed 4 rows containing missing values or values outside the scale range
+## (`geom_line()`).</code></pre>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-11-1.png" width="672" /></p>
 <p>TODO: visualize the simulation studies here
 &lt;Through simulation studies, I’ve found that about 20-30 workdays of data provide reasonable convergence for decision-making purposes&gt;. Using the (probably monte carlo), it looks like about 20-30 workdays of data provide reasonable convergence for decision-making purposes.</p>
 <p>However, practically speaking: we actually don’t need precise estimates of X and Y to make better parking decisions.</p>
 </div>
 <div id="when-good-enough-is-actually-perfect" class="section level2">
 <h2>When “Good Enough” Is Actually Perfect</h2>
-<p>Wwe don’t need to know exactly how many enforcement officers are patrolling or their exact rate of coverage. What we really need to know is when the risk crosses certain thresholds that would change our behavior.</p>
+<p>I know- I know- it is a lot of commitment (read: cost) to collect that much data. Thankfully, we don’t need to know exactly how many enforcement officers are patrolling or their exact rate of coverage. What we really need to know is when the risk crosses certain thresholds that would change our behavior.</p>
 <p>Let’s define three key thresholds:
 <span class="math display">\[ C_1(t) = \text{cost of moving car once per day} \]</span>
 <span class="math display">\[ C_2(t) = \text{cost of moving car twice per day} \]</span>
 <span class="math display">\[ C_3(t) = \text{cost of moving car three times per day} \]</span></p>
 <p>Our optimal strategy changes when:</p>
 <p><span class="math display">\[ E[\text{ticket cost}|t] &gt; \min(C_1, C_2, C_3) \]</span></p>
+<pre class="r"><code># Load required libraries
+library(tidyverse)</code></pre>
+<pre><code>## ── Attaching core tidyverse packages ──────────────────────── tidyverse 2.0.0 ──
+## ✔ forcats   1.0.0     ✔ stringr   1.5.1
+## ✔ lubridate 1.9.3     ✔ tibble    3.2.1
+## ✔ readr     2.1.5     
+## ── Conflicts ────────────────────────────────────────── tidyverse_conflicts() ──
+## ✖ dplyr::filter() masks stats::filter()
+## ✖ dplyr::lag()    masks stats::lag()
+## ℹ Use the conflicted package (&lt;http://conflicted.r-lib.org/&gt;) to force all conflicts to become errors</code></pre>
+<pre class="r"><code>library(ggplot2)
+
+# Define our parameters
+X &lt;- 2       # Number of enforcement officers
+Y &lt;- 3       # Zones patrolled per hour
+TICKET_COST &lt;- 65
+ZONES &lt;- 4   # Total number of parking zones
+LAMBDA &lt;- 0.5  # Parameter for recognition probability increase
+MOVE_COST &lt;- 15 # Cost per move (in terms of time and effort)
+
+# Function to calculate risk at time t
+calculate_risk &lt;- function(t, X, Y) {
+  # No risk for first 2 hours
+  if (t &lt;= 2) return(0)
+  
+  # Calculate risk only for time beyond 2-hour mark
+  excess_time &lt;- t - 2
+  
+  # Basic hazard rate calculation
+  h &lt;- X * Y * (1/ZONES) * (1 - exp(-LAMBDA * excess_time))
+  
+  # Calculate cumulative risk (probability of getting a ticket)
+  risk &lt;- 1 - exp(-h * excess_time)
+  
+  # Ensure risk doesn&#39;t exceed 1
+  return(pmin(1, risk))
+}
+
+# Function to calculate total risk for a workday with n moves
+calculate_workday_risk &lt;- function(total_time, n_moves) {
+  if (n_moves == 0) {
+    # For no moves, single continuous risk period after first 2 hours
+    return(calculate_risk(total_time, X, Y))
+  } else {
+    # Calculate segment length (time between moves)
+    segment_length &lt;- total_time / (n_moves + 1)
+    
+    # Risk for each segment
+    segment_risk &lt;- calculate_risk(segment_length, X, Y)
+    
+    # Probability of getting at least one ticket across all segments
+    total_risk &lt;- 1 - (1 - segment_risk)^(n_moves + 1)
+    
+    return(total_risk)
+  }
+}
+
+# Create time sequence for x-axis (in hours)
+time_seq &lt;- seq(0, 8, by = 0.1)
+
+# Calculate expected costs for different strategies
+results &lt;- tibble(
+  time = time_seq,
+  # Strategy 0: Don&#39;t move at all
+  no_moves = TICKET_COST * sapply(time_seq, function(t) calculate_workday_risk(t, 0)),
+  
+  # Strategy 1: Move once
+  one_move = MOVE_COST + TICKET_COST * sapply(time_seq, function(t) calculate_workday_risk(t, 1)),
+  
+  # Strategy 2: Move twice
+  two_moves = 2 * MOVE_COST + TICKET_COST * sapply(time_seq, function(t) calculate_workday_risk(t, 2)),
+  
+  # Strategy 3: Move three times
+  three_moves = 3 * MOVE_COST + TICKET_COST * sapply(time_seq, function(t) calculate_workday_risk(t, 3))
+)
+
+# Reshape data for plotting
+plot_data &lt;- results %&gt;%
+  pivot_longer(
+    cols = c(no_moves, one_move, two_moves, three_moves),
+    names_to = &quot;strategy&quot;,
+    values_to = &quot;cost&quot;
+  ) %&gt;%
+  mutate(
+    strategy = factor(
+      strategy,
+      levels = c(&quot;no_moves&quot;, &quot;one_move&quot;, &quot;two_moves&quot;, &quot;three_moves&quot;),
+      labels = c(&quot;No Moves&quot;, &quot;Move Once&quot;, &quot;Move Twice&quot;, &quot;Move Three Times&quot;)
+    )
+  )
+
+# Create the visualization
+ggplot(plot_data, aes(x = time, y = cost, color = strategy)) +
+  geom_line(size = 1) +
+  # Add vertical line at 2 hours to show when risk starts
+  geom_vline(xintercept = 2, linetype = &quot;dashed&quot;, alpha = 0.3) +
+  annotate(&quot;text&quot;, x = 2.2, y = max(plot_data$cost), 
+           label = &quot;Risk begins&quot;, angle = 90, alpha = 0.5) +
+  labs(
+    title = &quot;Cost Comparison of Different Parking Strategies&quot;,
+    subtitle = paste0(
+      &quot;Based on &quot;, X, &quot; officers patrolling &quot;, Y, &quot; zones per hour\n&quot;,
+      &quot;Ticket cost: $&quot;, TICKET_COST, &quot;, Move cost: $&quot;, MOVE_COST,
+      &quot;\nRisk starts after 2-hour grace period&quot;
+    ),
+    x = &quot;Workday Duration (hours)&quot;,
+    y = &quot;Expected Daily Cost ($)&quot;,
+    color = &quot;Strategy&quot;
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = &quot;bold&quot;, size = 14),
+    plot.subtitle = element_text(size = 12),
+    legend.position = &quot;bottom&quot;,
+    legend.title = element_text(size = 10),
+    legend.text = element_text(size = 9)
+  ) +
+  scale_y_continuous(
+    breaks = seq(0, max(plot_data$cost), by = 10),
+    labels = scales::dollar_format()
+  ) +
+  scale_color_brewer(palette = &quot;Set2&quot;)</code></pre>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-12-1.png" width="672" /></p>
+<pre class="r"><code># Load required libraries
+library(tidyverse)
+library(ggplot2)
+
+# Fixed parameters
+WORKDAY_LENGTH &lt;- 8  # Fixed 8-hour workday
+TICKET_COST &lt;- 65
+ZONES &lt;- 4
+LAMBDA &lt;- 0.5
+MOVE_COST &lt;- 15
+
+# Function to calculate risk for a single period
+calculate_period_risk &lt;- function(period_length, num_officers, patrol_rate) {
+  # No risk for first 2 hours
+  if (period_length &lt;= 2) return(0)
+  
+  # Calculate risk only for time beyond 2-hour mark
+  excess_time &lt;- period_length - 2
+  
+  # Basic hazard rate calculation
+  h &lt;- num_officers * patrol_rate * (1/ZONES) * (1 - exp(-LAMBDA * excess_time))
+  
+  # Calculate cumulative risk
+  risk &lt;- 1 - exp(-h * excess_time)
+  
+  return(pmin(1, risk))
+}
+
+# Function to calculate total workday risk with n moves
+calculate_strategy_cost &lt;- function(num_officers, patrol_rate, num_moves) {
+  # Calculate length of each period between moves
+  period_length &lt;- WORKDAY_LENGTH / (num_moves + 1)
+  
+  # Calculate risk for each period
+  period_risk &lt;- calculate_period_risk(period_length, num_officers, patrol_rate)
+  
+  # Total risk of getting at least one ticket
+  total_risk &lt;- 1 - (1 - period_risk)^(num_moves + 1)
+  
+  # Return total expected cost (movement costs + expected ticket cost)
+  return((num_moves-1) * MOVE_COST + TICKET_COST * total_risk)
+}
+
+# Create parameter grid
+num_officers_seq &lt;- seq(0.5, 5, by = 0.1)
+patrol_rates_seq &lt;- seq(0.5, 5, by = 0.1)
+
+# Calculate costs for each strategy across parameter grid
+results &lt;- expand.grid(
+  num_officers = num_officers_seq,
+  patrol_rate = patrol_rates_seq
+) %&gt;%
+  mutate(
+    no_moves = mapply(calculate_strategy_cost, num_officers, patrol_rate, 0),
+    one_move = mapply(calculate_strategy_cost, num_officers, patrol_rate, 1),
+    two_moves = mapply(calculate_strategy_cost, num_officers, patrol_rate, 2),
+    three_moves = mapply(calculate_strategy_cost, num_officers, patrol_rate, 3)
+  ) %&gt;%
+  mutate(
+    optimal_cost = pmin(no_moves, one_move, two_moves, three_moves),
+    optimal_strategy = case_when(
+      optimal_cost == no_moves ~ &quot;No Moves&quot;,
+      optimal_cost == one_move ~ &quot;Move Once&quot;,
+      optimal_cost == two_moves ~ &quot;Move Twice&quot;,
+      TRUE ~ &quot;Move Three Times&quot;
+    )
+  )
+
+# Create the visualization
+ggplot(results, aes(x = patrol_rate, y = num_officers, fill = optimal_strategy)) +
+  geom_raster(interpolate = TRUE) +
+  scale_fill_brewer(palette = &quot;Set2&quot;) +
+  labs(
+    title = &quot;Optimal Parking Strategy Based on Enforcement Parameters&quot;,
+    subtitle = paste0(
+      &quot;8-hour workday, $&quot;, TICKET_COST, &quot; ticket, $&quot;, MOVE_COST, &quot; per move\n&quot;,
+      &quot;Shows regions where each strategy minimizes expected cost&quot;
+    ),
+    x = &quot;Patrol Rate (zones per hour)&quot;,
+    y = &quot;Number of Enforcement Officers&quot;,
+    fill = &quot;Optimal Strategy&quot;
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = &quot;bold&quot;, size = 14),
+    plot.subtitle = element_text(size = 12),
+    legend.position = &quot;bottom&quot;
+  ) +
+  # Add contour lines showing expected cost
+  geom_contour(aes(z = optimal_cost), 
+               color = &quot;white&quot;, alpha = 0.5,
+               breaks = seq(0, max(results$optimal_cost), by = 10)) +
+  # Add point for original example parameters
+  geom_point(aes(x = 3, y = 2), color = &quot;red&quot;, size = 3) +
+  annotate(&quot;text&quot;, x = 3.2, y = 2, 
+           label = &quot;Original Example\nParameters&quot;, 
+           color = &quot;red&quot;, hjust = 0)</code></pre>
+<pre><code>## Warning: `stat_contour()`: Zero contours were generated</code></pre>
+<pre><code>## Warning in min(x): no non-missing arguments to min; returning Inf</code></pre>
+<pre><code>## Warning in max(x): no non-missing arguments to max; returning -Inf</code></pre>
+<pre><code>## Warning: `stat_contour()`: Zero contours were generated</code></pre>
+<pre><code>## Warning in min(x): no non-missing arguments to min; returning Inf</code></pre>
+<pre><code>## Warning in max(x): no non-missing arguments to max; returning -Inf</code></pre>
+<pre><code>## Warning: `stat_contour()`: Zero contours were generated</code></pre>
+<pre><code>## Warning in min(x): no non-missing arguments to min; returning Inf</code></pre>
+<pre><code>## Warning in max(x): no non-missing arguments to max; returning -Inf</code></pre>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-13-1.png" width="672" /></p>
+<pre class="r"><code># Add a second plot showing cost curves at the original example point
+example_point &lt;- results %&gt;%
+  filter(near(num_officers, 2, tol = 0.1) &amp; near(patrol_rate, 3, tol = 0.1)) %&gt;%
+  select(no_moves, one_move, two_moves, three_moves) %&gt;%
+  pivot_longer(everything(), 
+               names_to = &quot;strategy&quot;, 
+               values_to = &quot;cost&quot;)</code></pre>
+<pre class="r"><code># Load required libraries
+library(tidyverse)
+library(ggplot2)
+
+# Define our parameters
+WORKDAY_LENGTH &lt;- 8
+TICKET_COST &lt;- 65
+ZONES &lt;- 4
+LAMBDA &lt;- 0.5
+FIRST_MOVE_COST &lt;- 5    # Cost of first move
+ADDITIONAL_MOVE_COST &lt;- 15  # Cost of subsequent moves
+ANNUAL_PASS_COST &lt;- 8500
+WORKING_DAYS_PER_YEAR &lt;- 250  # Approximate number of working days
+
+# Function to calculate daily cost for a strategy
+calculate_daily_cost &lt;- function(num_officers, patrol_rate, num_moves) {
+  # Calculate movement costs
+  move_costs &lt;- if(num_moves == 0) {
+    0
+  } else {
+    FIRST_MOVE_COST + (num_moves - 1) * ADDITIONAL_MOVE_COST
+  }
+  
+  # Calculate risk of ticket
+  period_length &lt;- WORKDAY_LENGTH / (num_moves + 1)
+  excess_time &lt;- max(0, period_length - 2)
+  h &lt;- num_officers * patrol_rate * (1/ZONES) * (1 - exp(-LAMBDA * excess_time))
+  period_risk &lt;- 1 - exp(-h * excess_time)
+  total_risk &lt;- 1 - (1 - period_risk)^(num_moves + 1)
+  
+  # Return total daily cost
+  return(move_costs + TICKET_COST * total_risk)
+}
+
+# Calculate annual costs across parameter space
+num_officers_seq &lt;- seq(0.5, 5, by = 0.1)
+patrol_rates_seq &lt;- seq(0.5, 5, by = 0.1)
+
+results &lt;- expand.grid(
+  num_officers = num_officers_seq,
+  patrol_rate = patrol_rates_seq
+) %&gt;%
+  mutate(
+    no_moves_annual = WORKING_DAYS_PER_YEAR * 
+      mapply(calculate_daily_cost, num_officers, patrol_rate, 0),
+    one_move_annual = WORKING_DAYS_PER_YEAR * 
+      mapply(calculate_daily_cost, num_officers, patrol_rate, 1),
+    two_moves_annual = WORKING_DAYS_PER_YEAR * 
+      mapply(calculate_daily_cost, num_officers, patrol_rate, 2),
+    three_moves_annual = WORKING_DAYS_PER_YEAR * 
+      mapply(calculate_daily_cost, num_officers, patrol_rate, 3),
+    parking_pass = ANNUAL_PASS_COST
+  ) %&gt;%
+  mutate(
+    optimal_cost = pmin(no_moves_annual, one_move_annual, 
+                       two_moves_annual, three_moves_annual, 
+                       parking_pass),
+    optimal_strategy = case_when(
+      optimal_cost == parking_pass ~ &quot;Buy Annual Pass&quot;,
+      optimal_cost == no_moves_annual ~ &quot;No Moves&quot;,
+      optimal_cost == one_move_annual ~ &quot;Move Once&quot;,
+      optimal_cost == two_moves_annual ~ &quot;Move Twice&quot;,
+      TRUE ~ &quot;Move Three Times&quot;
+    )
+  )
+
+# Create the visualization
+ggplot(results, aes(x = patrol_rate, y = num_officers, fill = optimal_strategy)) +
+  geom_raster(interpolate = TRUE) +
+  scale_fill_brewer(palette = &quot;Set3&quot;) +
+  labs(
+    title = &quot;Optimal Annual Parking Strategy Including Parking Pass Option&quot;,
+    subtitle = paste0(
+      &quot;Annual pass: $&quot;, ANNUAL_PASS_COST,
+      &quot;, First move: $&quot;, FIRST_MOVE_COST,
+      &quot;, Additional moves: $&quot;, ADDITIONAL_MOVE_COST, &quot;\n&quot;,
+      &quot;Based on &quot;, WORKING_DAYS_PER_YEAR, &quot; working days per year&quot;
+    ),
+    x = &quot;Patrol Rate (zones per hour)&quot;,
+    y = &quot;Number of Enforcement Officers&quot;,
+    fill = &quot;Optimal Strategy&quot;
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = &quot;bold&quot;, size = 14),
+    plot.subtitle = element_text(size = 12),
+    legend.position = &quot;bottom&quot;
+  ) +
+  # Add contour lines showing annual cost
+  geom_contour(aes(z = optimal_cost), 
+               color = &quot;white&quot;, alpha = 0.5,
+               breaks = seq(0, max(results$optimal_cost), by = 1000)) +
+  # Add point for original example parameters
+  geom_point(aes(x = 3, y = 2), color = &quot;red&quot;, size = 3) +
+  annotate(&quot;text&quot;, x = 3.2, y = 2, 
+           label = &quot;Original Example\nParameters&quot;, 
+           color = &quot;red&quot;, hjust = 0)</code></pre>
+<pre><code>## Warning: `stat_contour()`: Zero contours were generated</code></pre>
+<pre><code>## Warning in min(x): no non-missing arguments to min; returning Inf</code></pre>
+<pre><code>## Warning in max(x): no non-missing arguments to max; returning -Inf</code></pre>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-14-1.png" width="672" /></p>
+<pre class="r"><code># Add analysis of cost differential at example point
+example_point &lt;- filter(results, 
+                       near(num_officers, 2, tol = 0.1) &amp; 
+                       near(patrol_rate, 3, tol = 0.1))</code></pre>
 <p>This simplified decision framework dramatically reduces our required sample size. Instead of needing precise parameter estimates, we only need enough data to determine which regime we’re in. In practice, I’ve found this often requires only 8-10 days of observations.</p>
 <p><also show monte carlo here to help observe the differences></p>
 </div>
