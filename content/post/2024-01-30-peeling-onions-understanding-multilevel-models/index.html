@@ -1,0 +1,130 @@
+---
+title: 'Peeling Onions: Understanding Multilevel Models'
+author: Youbeen Shim
+date: '2024-01-30'
+slug: peeling-onions-understanding-multilevel-models
+categories: []
+tags: []
+---
+
+
+
+<pre class="r"><code># Load required libraries
+library(tidyverse)</code></pre>
+<pre><code>## ── Attaching core tidyverse packages ──────────────────────── tidyverse 2.0.0 ──
+## ✔ dplyr     1.1.4     ✔ readr     2.1.5
+## ✔ forcats   1.0.0     ✔ stringr   1.5.1
+## ✔ ggplot2   3.5.1     ✔ tibble    3.2.1
+## ✔ lubridate 1.9.3     ✔ tidyr     1.3.1
+## ✔ purrr     1.0.2     
+## ── Conflicts ────────────────────────────────────────── tidyverse_conflicts() ──
+## ✖ dplyr::filter() masks stats::filter()
+## ✖ dplyr::lag()    masks stats::lag()
+## ℹ Use the conflicted package (&lt;http://conflicted.r-lib.org/&gt;) to force all conflicts to become errors</code></pre>
+<pre class="r"><code>library(ggplot2)
+library(scales)</code></pre>
+<pre><code>## 
+## Attaching package: &#39;scales&#39;
+## 
+## The following object is masked from &#39;package:purrr&#39;:
+## 
+##     discard
+## 
+## The following object is masked from &#39;package:readr&#39;:
+## 
+##     col_factor</code></pre>
+<pre class="r"><code># Create enhanced synthetic data with more points and clearer patterns
+create_adoption_data &lt;- function() {
+  # Define our segments
+  wealth_tiers &lt;- c(&quot;Free Tier&quot;, &quot;HENRY&quot;, &quot;Mega Rich&quot;)
+  locations &lt;- c(&quot;Rural&quot;, &quot;Suburban&quot;, &quot;Urban&quot;)
+  
+  # Create data frame with multiple points per segment
+  data &lt;- expand_grid(
+    wealth_tier = wealth_tiers,
+    location = locations,
+    sample_point = 1:10  # Create 10 points per segment
+  ) %&gt;%
+    mutate(
+      location = factor(location, levels = c(&quot;Rural&quot;, &quot;Suburban&quot;, &quot;Urban&quot;)),
+      # Create baseline rates that vary by wealth tier
+      baseline_rate = case_when(
+        wealth_tier == &quot;Free Tier&quot; ~ 
+          case_when(
+            location == &quot;Rural&quot; ~ runif(n(), 0.06, 0.08),
+            location == &quot;Suburban&quot; ~ runif(n(), 0.07, 0.09),
+            location == &quot;Urban&quot; ~ runif(n(), 0.08, 0.10)
+          ),
+        wealth_tier == &quot;HENRY&quot; ~ 
+          case_when(
+            location == &quot;Rural&quot; ~ runif(n(), 0.09, 0.11),
+            location == &quot;Suburban&quot; ~ runif(n(), 0.11, 0.13),
+            location == &quot;Urban&quot; ~ runif(n(), 0.13, 0.15)
+          ),
+        wealth_tier == &quot;Mega Rich&quot; ~ 
+          case_when(
+            location == &quot;Rural&quot; ~ runif(n(), 0.12, 0.14),
+            location == &quot;Suburban&quot; ~ runif(n(), 0.14, 0.16),
+            location == &quot;Urban&quot; ~ runif(n(), 0.16, 0.18)
+          )
+      )
+    ) %&gt;%
+    # Add improvement rates that vary by segment
+    mutate(
+      improvement_factor = case_when(
+        wealth_tier == &quot;Free Tier&quot; ~ 
+          case_when(
+            location == &quot;Rural&quot; ~ 1.35,
+            location == &quot;Suburban&quot; ~ 1.30,
+            location == &quot;Urban&quot; ~ 1.25
+          ),
+        wealth_tier == &quot;HENRY&quot; ~ 
+          case_when(
+            location == &quot;Rural&quot; ~ 1.25,
+            location == &quot;Suburban&quot; ~ 1.30,
+            location == &quot;Urban&quot; ~ 1.35
+          ),
+        wealth_tier == &quot;Mega Rich&quot; ~ 
+          case_when(
+            location == &quot;Rural&quot; ~ 1.30,
+            location == &quot;Suburban&quot; ~ 1.25,
+            location == &quot;Urban&quot; ~ 1.20
+          )
+      ),
+      # Calculate improved rate with some random noise
+      improved_rate = baseline_rate * improvement_factor + rnorm(n(), 0, 0.002)
+    )
+  
+  return(data)
+}
+
+# Generate the data
+set.seed(123)
+data &lt;- create_adoption_data()
+
+# Create the visualization
+ggplot(data, aes(x = baseline_rate, y = improved_rate, color = location)) +
+  geom_point(size = 3, alpha = 0.7) +
+  geom_smooth(method = &quot;lm&quot;, se = FALSE, linewidth = 1) +
+  facet_wrap(~wealth_tier) +
+  scale_color_manual(values = c(&quot;#66C2A5&quot;, &quot;#FC8D62&quot;, &quot;#8DA0CB&quot;)) +
+  scale_x_continuous(labels = scales::percent_format(accuracy = 1)) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
+  labs(
+    title = &quot;Hierarchical Patterns in Product Adoption&quot;,
+    subtitle = &quot;Each wealth tier shows distinct location-based patterns&quot;,
+    x = &quot;Baseline Adoption Rate&quot;,
+    y = &quot;Improved Adoption Rate&quot;,
+    color = &quot;Location&quot;
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 14, face = &quot;bold&quot;),
+    plot.subtitle = element_text(size = 12),
+    axis.text = element_text(size = 10),
+    legend.position = &quot;bottom&quot;,
+    panel.grid.major = element_line(color = &quot;gray90&quot;),
+    panel.grid.minor = element_line(color = &quot;gray95&quot;)
+  )</code></pre>
+<pre><code>## `geom_smooth()` using formula = &#39;y ~ x&#39;</code></pre>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-1-1.png" width="672" /></p>
