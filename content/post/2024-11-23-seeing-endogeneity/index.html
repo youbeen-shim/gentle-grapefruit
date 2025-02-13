@@ -9,7 +9,28 @@ tags: []
 
 
 
-<pre class="r"><code>library(tidyverse)</code></pre>
+<div id="endogeneity-seeing-is-believing" class="section level2">
+<h2>Endogeneity: Seeing is Believing</h2>
+<p>Contrary to what I’ve just said in the title, I do not think that you need to see to believe - it sure does help though.</p>
+<p>In <abbr title="I hope to do less of multi-series work, since I do not think that it is very conducive to learning.">Part 1</abbr>, we looked at how endogeneity can undermine models; mostly in secret, too. Today, I want to dive into solutions, using simulation to understand the problem and instrumental variables to solve it. I’ll be using a generalization of my work tackling endogeneity in production credit risk models.</p>
+</div>
+<div id="previously-on-endogeneity" class="section level2">
+<h2>Previously on <abbr title="i was going for a tv series-ish feeling, did it work? Maybe I’m just too much of a nerd"><em>Endogeneity</em>…</abbr></h2>
+<p>Remember the <abbr title="if you just now visiting us, i dont think you need to read the first part if you already know endogeneity is a problem you want to solve">credit risk model problem</abbr> that I designed for new hires? Interest rates seemed like a perfect predictor of credit risk. However, it was a trap as interest rates and default risk was endogenous. Today, let’s see exactly how this affects our models.</p>
+<div id="simulating-endogeneity" class="section level3">
+<h3>Simulating Endogeneity</h3>
+<p>The credit risk assessment deals with a classic case of endogeneity of <em>omitted variables</em>, where an unmeasured variable influences both predictor and the target. Both the predictor, <em>interest_rate</em>, and the target, <em>default_prob</em>, are influenced by the unobserved <em>credit_worthiness</em>.</p>
+<details>
+<summary>
+click here for the complete simulation code
+</summary>
+<pre class="r"><code>1+1</code></pre>
+<pre><code>## [1] 2</code></pre>
+</details>
+<p>First, notice how <em>credit_worthiness</em> variable is structured. It follows a standard normal distribution, representing the true quality of each individual that we cannot directly measure in practice.</p>
+<pre class="r"><code>credit_worthiness &lt;- rnorm(n, mean = 0, sd = 1)</code></pre>
+<p>Then, we explicitly design endogeneity into the relationship. Notice how the formula creates a <abbr title="the exponential term creates a more realistic pattern where interest rates have a floor but can increase substantially for risky borrowers.">nonlinear relationship</abbr> where better credit worthiness leads to lower interest rates, plus some random noise.</p>
+<pre class="r"><code>interest_rate = 0.05 + 0.03 * exp(-credit_worthiness) + rnorm(n, 0, 0.01)</code></pre>
 <pre><code>## ── Attaching core tidyverse packages ──────────────────────── tidyverse 2.0.0 ──
 ## ✔ dplyr     1.1.4     ✔ readr     2.1.5
 ## ✔ forcats   1.0.0     ✔ stringr   1.5.1
@@ -19,47 +40,16 @@ tags: []
 ## ── Conflicts ────────────────────────────────────────── tidyverse_conflicts() ──
 ## ✖ dplyr::filter() masks stats::filter()
 ## ✖ dplyr::lag()    masks stats::lag()
-## ℹ Use the conflicted package (&lt;http://conflicted.r-lib.org/&gt;) to force all conflicts to become errors</code></pre>
-<pre class="r"><code>library(ggplot2)
-set.seed(1008)
-
-simulate_loan_data &lt;- function(n_samples = 1000) {
-  # True underlying creditworthiness (unobserved)
-  creditworthiness &lt;- rnorm(n_samples, mean = 0, sd = 1)
-  
-  # Generate business characteristics
-  business_age &lt;- rpois(n_samples, lambda = 5)
-  annual_revenue &lt;- exp(rnorm(n_samples, mean = 11, sd = 1))
-  
-  # Interest rate depends on creditworthiness and observables
-  interest_rate &lt;- 5 + 
-                  -0.5 * creditworthiness +  # Higher creditworthiness → Lower rate
-                  -0.1 * business_age +
-                  -0.1 * log(annual_revenue) +
-                  rnorm(n_samples, mean = 0, sd = 0.5)
-  
-  # Default probability depends on creditworthiness and interest rate
-  default_prob &lt;- plogis(-2 +
-                        -0.8 * creditworthiness +  # Higher creditworthiness → Lower default
-                        0.2 * interest_rate +
-                        -0.1 * business_age +
-                        -0.1 * log(annual_revenue))
-  
-  # Realize defaults
-  default &lt;- rbinom(n_samples, size = 1, prob = default_prob)
-  
-  # Create dataset
-  data.frame(
-    business_age = business_age,
-    annual_revenue = annual_revenue,
-    interest_rate = interest_rate,
-    creditworthiness = creditworthiness,  # Usually unobserved
-    default = default
-  )
-}
-
-# Generate data
-loan_data &lt;- simulate_loan_data()</code></pre>
+## ℹ Use the conflicted package (&lt;http://conflicted.r-lib.org/&gt;) to force all conflicts to become errors
+## `geom_smooth()` using formula = &#39;y ~ x&#39;</code></pre>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-4-1.png" width="672" /></p>
+<pre><code>## `geom_smooth()` using formula = &#39;y ~ x&#39;</code></pre>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-4-2.png" width="672" /><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-4-3.png" width="672" /></p>
+<pre><code>## [1] &quot;Correlation Matrix:&quot;</code></pre>
+<pre><code>##                   credit_worthiness interest_rate default_prob
+## credit_worthiness             1.000        -0.764       -0.863
+## interest_rate                -0.764         1.000        0.806
+## default_prob                 -0.863         0.806        1.000</code></pre>
 <pre class="r"><code>genEndogData &lt;- function(n=100){
   sigma &lt;- matrix(c(40,12,12,20), ncol=2)
   de &lt;- mvtnorm::rmvnorm(n=n, mean=c(0,0), sigma=sigma)
@@ -95,7 +85,7 @@ ggplot(viz_test_data, aes(x = Y, y = Z)) +
        color = &quot;X&quot;) +
   theme_minimal()</code></pre>
 <pre><code>## `geom_smooth()` using formula = &#39;y ~ x&#39;</code></pre>
-<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-2-1.png" width="672" /></p>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-6-1.png" width="672" /></p>
 <pre class="r"><code>genEndogData &lt;- function(n=100){
   sigma &lt;- matrix(c(40,12,12,20), ncol=2)
   de &lt;- mvtnorm::rmvnorm(n=n, mean=c(0,0), sigma=sigma)
@@ -131,7 +121,7 @@ ggplot(viz_test_data, aes(x = X, y = Z)) +
        color = &quot;Y&quot;) +
   theme_minimal()</code></pre>
 <pre><code>## `geom_smooth()` using formula = &#39;y ~ x&#39;</code></pre>
-<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-3-1.png" width="672" /></p>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-7-1.png" width="672" /></p>
 <pre class="r"><code># Fit naive model
 naive_model &lt;- glm(default ~ interest_rate + business_age + log(annual_revenue),
                   family = binomial(link = &quot;logit&quot;),
@@ -158,7 +148,7 @@ ggplot(viz_data, aes(x = interest_rate, y = default)) +
        color = &quot;Creditworthiness&quot;) +
   theme_minimal()</code></pre>
 <pre><code>## `geom_smooth()` using formula = &#39;y ~ x&#39;</code></pre>
-<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-4-1.png" width="672" /></p>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-8-1.png" width="672" /></p>
 <pre class="r"><code># Simulate instruments
 simulate_instruments &lt;- function(loan_data, n_samples = nrow(loan_data)) {
   # Federal funds rate (varies by time)
@@ -259,3 +249,5 @@ naive_perf &lt;- evaluate_model(naive_model, loan_data)</code></pre>
 ##   &lt;fct&gt;     &lt;int&gt;  &lt;dbl&gt;  &lt;dbl&gt;
 ## 1 (0,0.1]     840 0.0817 0.0845
 ## 2 (0.1,0.2]   160 0.109  0.0938</code></pre>
+</div>
+</div>

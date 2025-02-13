@@ -7,7 +7,154 @@ categories: []
 tags: []
 ---
 
+## Endogeneity: Seeing is Believing
+
+Contrary to what I’ve just said in the title, I do not think that you need to see to believe - it sure does help though.
+
+In <abbr title="I hope to do less of multi-series work, since I do not think that it is very conducive to learning.">Part 1</abbr>, we looked at how endogeneity can undermine models; mostly in secret, too. Today, I want to dive into solutions, using simulation to understand the problem and instrumental variables to solve it. I’ll be using a generalization of my work tackling endogeneity in production credit risk models.
+
+
+## Previously on <abbr title="i was going for a tv series-ish feeling, did it work? Maybe I’m just too much of a nerd">*Endogeneity*...</abbr>
+
+Remember the <abbr title="if you just now visiting us, i dont think you need to read the first part if you already know endogeneity is a problem you want to solve">credit risk model problem</abbr> that I designed for new hires? Interest rates seemed like a perfect predictor of credit risk. However, it was a trap as interest rates and default risk was endogenous. Today, let’s see exactly how this affects our models. 
+
+### Simulating Endogeneity
+
+The credit risk assessment deals with a classic case of endogeneity of *omitted variables*, where an unmeasured variable influences both predictor and the target. Both the predictor, *interest_rate*, and the target, *default_prob*, are influenced by the unobserved *credit_worthiness*. 
+
+<details><summary>click here for the complete simulation code</summary>
 ```{r}
+1+1
+```
+
+</details>
+
+First, notice how *credit_worthiness* variable is structured. It follows a standard normal distribution, representing the true quality of each individual that we cannot directly measure in practice. 
+
+```{r, eval=FALSE}
+credit_worthiness <- rnorm(n, mean = 0, sd = 1)
+```
+
+Then, we explicitly design endogeneity into the relationship. Notice how the formula creates a <abbr title="the exponential term creates a more realistic pattern where interest rates have a floor but can increase substantially for risky borrowers.">nonlinear relationship</abbr> where better credit worthiness leads to lower interest rates, plus some random noise. 
+
+```{r, eval=FALSE}
+interest_rate = 0.05 + 0.03 * exp(-credit_worthiness) + rnorm(n, 0, 0.01)
+```
+
+
+
+
+```{r, echo=FALSE}
+# Section 2: Simulating Endogeneity in Credit Risk Assessment
+
+## Load required libraries
+library(tidyverse)
+library(ggplot2)
+library(broom)
+
+## Simulate underlying data structure
+set.seed(42)  # For reproducibility
+
+simulate_credit_data <- function(n = 1000) {
+  # First, simulate the unobserved credit worthiness
+  # We use normal distribution to represent the underlying quality
+  credit_worthiness <- rnorm(n, mean = 0, sd = 1)
+  
+  # Now simulate observable features
+  # Note how some variables are influenced by credit_worthiness
+  tibble(
+    credit_worthiness = credit_worthiness,
+    
+    # Business characteristics
+    business_age = rexp(n, rate = 1/5) + abs(credit_worthiness),  # Older businesses tend to have better credit
+    annual_revenue = exp(rnorm(n, 11, 1) + 0.5 * credit_worthiness),  # Revenue partially reflects creditworthiness
+    
+    # Financial metrics
+    current_debt = exp(rnorm(n, 10, 0.8) - 0.3 * credit_worthiness),  # Better credit worthiness → less debt
+    cash_flow_volatility = rexp(n, rate = 2) - 0.2 * credit_worthiness,  # Better credit → more stable
+    
+    # Endogenous variables
+    interest_rate = 0.05 + 0.03 * exp(-credit_worthiness) + rnorm(n, 0, 0.01),
+    
+    # Credit utilization (ratio of current debt to credit limit)
+    credit_utilization = pmin(1, pmax(0, rbeta(n, 2, 4) - 0.3 * credit_worthiness)),
+    
+    # Target variable: default probability
+    default_prob = plogis(-2 - 1.5 * credit_worthiness + 
+                         0.2 * cash_flow_volatility +
+                         rnorm(n, 0, 0.5))  # Add some noise
+  )
+}
+
+# Generate our dataset
+credit_data <- simulate_credit_data(1000)
+
+# Fit naive model ignoring endogeneity
+naive_model <- lm(default_prob ~ business_age + annual_revenue + current_debt + 
+                 interest_rate + credit_utilization + cash_flow_volatility,
+                 data = credit_data)
+
+# Section 3: Visualizing the Impact of Endogeneity
+
+## Plot 1: Interest Rate vs Default Probability
+p1 <- ggplot(credit_data, aes(x = interest_rate, y = default_prob)) +
+  geom_point(alpha = 0.4, aes(color = credit_worthiness)) +
+  geom_smooth(method = "lm", color = "red", se = FALSE) +
+  scale_color_viridis_c() +
+  labs(title = "Interest Rate vs Default Probability",
+       subtitle = "Color indicates underlying credit worthiness",
+       x = "Interest Rate",
+       y = "Default Probability",
+       color = "Credit\nWorthiness") +
+  theme_minimal()
+
+## Plot 2: Credit Worthiness Impact
+p2 <- credit_data %>%
+  pivot_longer(cols = c(interest_rate, default_prob),
+               names_to = "variable",
+               values_to = "value") %>%
+  ggplot(aes(x = credit_worthiness, y = value)) +
+  geom_point(alpha = 0.4) +
+  geom_smooth(method = "lm", se = FALSE) +
+  facet_wrap(~variable, scales = "free_y") +
+  labs(title = "Impact of Credit Worthiness",
+       subtitle = "Showing relationship with endogenous variables",
+       x = "Credit Worthiness",
+       y = "Variable Value") +
+  theme_minimal()
+
+## Plot 3: Coefficient Plot
+coef_plot <- tidy(naive_model) %>%
+  filter(term != "(Intercept)") %>%
+  ggplot(aes(x = reorder(term, estimate), y = estimate)) +
+  geom_col(fill = "steelblue", alpha = 0.7) +
+  geom_errorbar(aes(ymin = estimate - std.error*1.96,
+                    ymax = estimate + std.error*1.96),
+                width = 0.2) +
+  coord_flip() +
+  labs(title = "Naive Model Coefficients",
+       subtitle = "Notice the potentially misleading interest rate effect",
+       x = "Variable",
+       y = "Coefficient Estimate") +
+  theme_minimal()
+
+# Display plots
+print(p1)
+print(p2)
+print(coef_plot)
+
+# Calculate correlations to show the endogeneity structure
+cor_matrix <- credit_data %>%
+  select(credit_worthiness, interest_rate, default_prob) %>%
+  cor() %>%
+  round(3)
+
+print("Correlation Matrix:")
+print(cor_matrix)
+```
+
+
+```{r, echo=FALSE}
 library(tidyverse)
 library(ggplot2)
 set.seed(1008)
