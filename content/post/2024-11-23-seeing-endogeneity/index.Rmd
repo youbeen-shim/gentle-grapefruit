@@ -7,26 +7,84 @@ categories: []
 tags: []
 ---
 
-## Endogeneity: Seeing is Believing
+## Seeing is Believing
 
-Contrary to what I’ve just said in the title, I do not think that you need to see to believe - it sure does help though.
+Contrary to what I’ve just said, I do not think that you need to see to believe - it sure does help though.
 
 In <abbr title="I hope to do less of multi-series work, since I do not think that it is very conducive to learning.">Part 1</abbr>, we looked at how endogeneity can undermine models; mostly in secret, too. Today, I want to dive into solutions, using simulation to understand the problem and instrumental variables to solve it. I’ll be using a generalization of my work tackling endogeneity in production credit risk models.
 
-
-## Previously on <abbr title="i was going for a tv series-ish feeling, did it work? Maybe I’m just too much of a nerd">*Endogeneity*...</abbr>
-
 Remember the <abbr title="if you just now visiting us, i dont think you need to read the first part if you already know endogeneity is a problem you want to solve">credit risk model problem</abbr> that I designed for new hires? Interest rates seemed like a perfect predictor of credit risk. However, it was a trap as interest rates and default risk was endogenous. Today, let’s see exactly how this affects our models. 
 
-### Simulating Endogeneity
+## Simulating Endogeneity
 
-The credit risk assessment deals with a classic case of endogeneity of *omitted variables*, where an unmeasured variable influences both predictor and the target. Both the predictor, *interest_rate*, and the target, *default_prob*, are influenced by the unobserved *credit_worthiness*. 
+The credit risk assessment deals with a classic case of endogeneity of **omitted variables**, where an unmeasured variable influences both predictor and the target. Both the predictor, *interest_rate*, and the target, *default_prob*, are influenced by the unobserved *credit_worthiness*. 
+
+<details><summary>click here for the packages used in this blog, along with quick descriptions </summary>
+
+You can decide if you want to use my code directly, or fine-tune with packages of your preference.
+```{r, warning=FALSE, message=FALSE}
+library(tidyverse)
+library(ggplot2)
+
+library(xgboost) # only if you want to use the xgboost's feature importance
+library(AER)  # For instrumental variables regression
+```
+</details>
 
 <details><summary>click here for the complete simulation code</summary>
 ```{r}
-1+1
+simulate_credit_data <- function(n = 1000) {
+  # Keep the same credit worthiness distribution
+  credit_worthiness <- rnorm(n, mean = 0, sd = 1)
+  
+  tibble(
+    credit_worthiness = credit_worthiness,
+    
+    # Other variables remain the same
+    business_age = rexp(n, rate = 1/5) + abs(credit_worthiness),
+    annual_revenue = exp(rnorm(n, 11, 1) + 0.5 * credit_worthiness),
+    current_debt = exp(rnorm(n, 10, 0.8) - 0.3 * credit_worthiness),
+    cash_flow_volatility = rexp(n, rate = 2) - 0.2 * credit_worthiness,
+    
+    # Modified interest rate calculation:
+    # Better credit worthiness should lead to lower interest rates more dramatically
+    interest_rate = 0.05 + 0.15 * exp(-credit_worthiness) + rnorm(n, 0, 0.01),
+    # interest_rate = 0.05 + 0.03 * exp(-credit_worthiness) + rnorm(n, 0, 0.01),
+    
+    credit_utilization = pmin(1, pmax(0, rbeta(n, 2, 4) - 0.3 * credit_worthiness)),
+    
+    # Modified default probability:
+    # Now higher credit worthiness leads to higher default probability
+    # Removed the negative sign before credit_worthiness coefficient
+    default_prob = plogis(-2 - 1.5 * credit_worthiness + 
+                         0.2 * cash_flow_volatility +
+                         rnorm(n, 0, 0.3))
+  )
+}
+
+# Generate our dataset
+set.seed(1008)
+credit_data <- simulate_credit_data(1000)
 ```
 
+> Note: If you are the diligent type that is taking note of all the code, you'll notice that I am using ***credit_data_iv*** instead of ***credit_data*** for all of the modeling & visualization code below. Pretend for now that those two objects are exactly the same thing. Why one is in place of the other will make more sense later in the post.
+
+```{r, echo=FALSE}
+simulate_credit_data_with_instrument <- function(n = 1000) {
+  data <- simulate_credit_data(n) # base simulation
+  
+  data$regulatory_zone <- sample(1:3, n, replace = TRUE) # our instrument
+  
+  # mod interest_rate behavior so that it is affected by regulatory zones
+  data$interest_rate <- data$interest_rate + 
+                        (data$regulatory_zone - 2) * 0.01 +  # regulatory effect
+                        rnorm(n, 0, 0.005)  # noise
+  
+  return(data)
+}
+
+credit_data_iv <- simulate_credit_data_with_instrument(1000)
+```
 </details>
 
 First, notice how *credit_worthiness* variable is structured. It follows a standard normal distribution, representing the true quality of each individual that we cannot directly measure in practice. 
@@ -42,351 +100,516 @@ interest_rate = 0.05 + 0.03 * exp(-credit_worthiness) + rnorm(n, 0, 0.01)
 ```
 
 
+## Seeing Endogeneity
 
+With the data now generated, we have sufficient knowledge that the features have endogeneity. We can now combine typical exploratory data work combined with some tips from the previous post to gauge the impact of endogeneity. In the visualizations below, note how endogeneity manifests in the data.
+
+### Plot of Coefficients
+
+A naive model that ignores endogeneity and uses all of the available data at hand might look something like this:
+
+```{r}
+naive_model <- lm(default_prob ~ business_age + annual_revenue + current_debt + 
+                                 interest_rate + credit_utilization + cash_flow_volatility,
+                  data = credit_data_iv)
+```
+
+Using the model above, I can generate a plot of its coefficients. This is typically done to [gauge each individual feature's importance](https://machinelearningmastery.com/calculate-feature-importance-with-python), which is intuitive since [coefficients show how much the target variable changes for a one-unit increase in the feature, assuming all other features remain constant](https://statisticsbyjim.com/regression/interpret-coefficients-p-values-regression).
+
+<details><summary>click here for the ggplot code</summary>
+```{r}
+coef_plot <- broom::tidy(naive_model) %>%
+  filter(term != "(Intercept)") %>%
+  ggplot(aes(x = reorder(term, estimate), y = estimate)) +
+  geom_col(fill = "blue", alpha = 0.7) +
+  geom_errorbar(aes(ymin = estimate - std.error*1.96,
+                    ymax = estimate + std.error*1.96),
+                width = 0.2) +
+  coord_flip() +
+  labs(title = "Coefficients from the Naive Model",
+       subtitle = "Note the (potentially misleading) interest rate effect",
+       x = "Variable",
+       y = "Coefficient Estimate") +
+  theme_minimal()
+```
+</details>
 
 ```{r, echo=FALSE}
-# Section 2: Simulating Endogeneity in Credit Risk Assessment
+print(coef_plot)
+```
 
-## Load required libraries
-library(tidyverse)
-library(ggplot2)
-library(broom)
+If you are knee-deep in the machine learning world, and you *must* see how a naive xgboost might perform, I got you.
 
-## Simulate underlying data structure
-set.seed(42)  # For reproducibility
+<details><summary>click here for the code</summary>
+```{r}
+# xgboost requires the data to be in a matrix format
+features <- c("business_age", "annual_revenue", "current_debt", 
+              "interest_rate", "credit_utilization", "cash_flow_volatility")
+# Note: credit_worthiness is excluded since it's our unobserved variable
+train_matrix <- as.matrix(credit_data_iv[features])
+train_label <- credit_data_iv$default_prob
 
-simulate_credit_data <- function(n = 1000) {
-  # First, simulate the unobserved credit worthiness
-  # We use normal distribution to represent the underlying quality
-  credit_worthiness <- rnorm(n, mean = 0, sd = 1)
-  
-  # Now simulate observable features
-  # Note how some variables are influenced by credit_worthiness
-  tibble(
-    credit_worthiness = credit_worthiness,
-    
-    # Business characteristics
-    business_age = rexp(n, rate = 1/5) + abs(credit_worthiness),  # Older businesses tend to have better credit
-    annual_revenue = exp(rnorm(n, 11, 1) + 0.5 * credit_worthiness),  # Revenue partially reflects creditworthiness
-    
-    # Financial metrics
-    current_debt = exp(rnorm(n, 10, 0.8) - 0.3 * credit_worthiness),  # Better credit worthiness → less debt
-    cash_flow_volatility = rexp(n, rate = 2) - 0.2 * credit_worthiness,  # Better credit → more stable
-    
-    # Endogenous variables
-    interest_rate = 0.05 + 0.03 * exp(-credit_worthiness) + rnorm(n, 0, 0.01),
-    
-    # Credit utilization (ratio of current debt to credit limit)
-    credit_utilization = pmin(1, pmax(0, rbeta(n, 2, 4) - 0.3 * credit_worthiness)),
-    
-    # Target variable: default probability
-    default_prob = plogis(-2 - 1.5 * credit_worthiness + 
-                         0.2 * cash_flow_volatility +
-                         rnorm(n, 0, 0.5))  # Add some noise
-  )
-}
+# train 
+xgb_model <- xgboost(
+  data = train_matrix,
+  label = train_label,
+  nrounds = 100,
+  objective = "reg:squarederror",
+  verbose = 0
+)
 
-# Generate our dataset
-credit_data <- simulate_credit_data(1000)
+# feature importance
+importance <- xgb.importance(
+  feature_names = features,
+  model = xgb_model
+)
 
-# Fit naive model ignoring endogeneity
-naive_model <- lm(default_prob ~ business_age + annual_revenue + current_debt + 
-                 interest_rate + credit_utilization + cash_flow_volatility,
-                 data = credit_data)
+importance_plot <- ggplot(importance, aes(x = reorder(Feature, Gain), y = Gain)) +
+  geom_col(fill = "blue", alpha = 0.7) +
+  coord_flip() +
+  labs(title = "Feature Importance from the Naive XGBoost Model",
+       subtitle = "Measured as contribution to model performance",
+       x = "Feature",
+       y = "Gain (Importance Score)") +
+  theme_minimal()
+```
+</details>
 
-# Section 3: Visualizing the Impact of Endogeneity
+```{r, echo=FALSE}
+print(importance_plot)
+```
 
-## Plot 1: Interest Rate vs Default Probability
-p1 <- ggplot(credit_data, aes(x = interest_rate, y = default_prob)) +
-  geom_point(alpha = 0.4, aes(color = credit_worthiness)) +
+As you can see, if anything, machine learning algorithms are even more likely to identify *interest_rate* as a strong predictor (which is obvious, given its endogeneity) and overfit on it. This can lead to some disasterous misinterpretation and a lot of head scratching when your models underperform in live testing.  
+
+
+### Interest Rate vs Default Probability
+
+Observing the overwhelming power of *interest_rate*, you might be inclined to see it's direct relationship with with our target, *default_prob*. Notice how the apparent relationship between the two variables (the red line) can mislead us. While the line shows almost a linear relationship, by incorporating *credit_worthiness*, we can see it has a gradual gradient along the graph implying that both variables could be influenced by the variable that we cannot observe. 
+
+<details><summary>click here for the ggplot code</summary>
+```{r}
+onetoone <- ggplot(credit_data_iv, aes(x = interest_rate, y = default_prob)) +
+  geom_point(alpha = 0.4) +
+  geom_smooth(method = "lm", color = "red", se = FALSE) +
+  labs(title = "Interest Rate vs Default Probability",
+       x = "Interest Rate",
+       y = "Default Probability",
+       color = "Credit\nWorthiness") +
+  theme_minimal()
+```
+
+```{r}
+onetoone_w_credit <- ggplot(credit_data_iv, aes(x = interest_rate, y = default_prob)) +
+  geom_point(alpha = 0.6, aes(color = credit_worthiness)) +
   geom_smooth(method = "lm", color = "red", se = FALSE) +
   scale_color_viridis_c() +
   labs(title = "Interest Rate vs Default Probability",
-       subtitle = "Color indicates underlying credit worthiness",
+       x = "Interest Rate",
+       y = "Default Probability",
+       color = "Credit\nWorthiness") +
+  theme_minimal()
+```
+</details>
+
+```{r, figures-side, fig.show="hold", out.width="50%", message=FALSE, warning=FALSE, echo=FALSE}
+print(onetoone)
+print(onetoone_w_credit)
+```
+
+We can drive this point further by breaking the groups down into a quantile using *credit_worthiness*, and graphing the relationship between *default_prob* and *interest_rate* for each quantile, like so:
+
+```{r, eval=FALSE}
+credit_worthiness =  cut(credit_worthiness, 
+                         breaks = quantile(credit_worthiness, probs = 0:4/4),
+                         labels = c("Very Low", "Moderate Low", "Moderate High", "Very High")
+```
+
+<details><summary>click here for the complete code</summary>
+
+With uniform scale
+
+```{r}
+onetoone_quantile <- credit_data_iv %>%
+  mutate(credit_worthiness =  cut(round(credit_worthiness, 8) , 
+                                  breaks = quantile(credit_worthiness, probs = 0:4/4),
+                                  labels = c("Very Low", "Moderate Low", "Moderate High", "Very High"))
+  )
+
+onetoone_quantile_p <- ggplot(onetoone_quantile, aes(x = interest_rate, y = default_prob)) +
+  geom_point(alpha = 0.3, aes(color = credit_worthiness)) +
+  geom_smooth(method = "glm", method.args = list(family = "gaussian")) +
+  facet_wrap(~credit_worthiness) +
+  labs(title = "default_prob vs interest_rate",
+       subtitle = "Grouped by credit_worthiness",
+       x = "interest_rate (%)",
+       y = "default_prob",
+       color = "credit_worthiness") +
+  theme_minimal()
+```
+
+(the version shown in the post) With xlim & ylim of (0, 1.5) for the "very low", and (0, 0.5) for "moderate low", "moderate high", and "very high"
+
+```{r}
+p1 <- onetoone_quantile %>% filter(credit_worthiness == "Very Low") %>%
+ggplot(aes(x = interest_rate, y = default_prob)) +
+  geom_point(alpha = 0.4, color ='red') +
+  geom_smooth(method = "glm", method.args = list(family = "gaussian")) +
+  labs(title = "Credit Worthiness: Very Low",
+       x = "interest_rate (%)",
+       y = "default_prob") +
+  xlim(0, 1.5) + 
+  ylim(0, 1.5) + 
+  theme_minimal()
+
+p2 <- onetoone_quantile %>% filter(credit_worthiness == "Moderate Low") %>%
+ggplot(aes(x = interest_rate, y = default_prob)) +
+  geom_point(alpha = 0.4, color ='green') +
+  geom_smooth(method = "glm", method.args = list(family = "gaussian")) +
+  labs(title = "Credit Worthiness: Moderate Low",
+       x = "interest_rate (%)",
+       y = "default_prob") +
+  xlim(0, 0.5) + 
+  ylim(0, 0.5) + 
+  theme_minimal()
+
+p3 <- onetoone_quantile %>% filter(credit_worthiness == "Moderate High") %>%
+ggplot(aes(x = interest_rate, y = default_prob)) +
+  geom_point(alpha = 0.4, color ='blue') +
+  geom_smooth(method = "glm", method.args = list(family = "gaussian")) +
+  labs(title = "Credit Worthiness: Moderate Low",
+       x = "interest_rate (%)",
+       y = "default_prob") +
+  xlim(0, 0.5) + 
+  ylim(0, 0.5) + 
+  theme_minimal()
+
+p4 <- onetoone_quantile %>% filter(credit_worthiness == "Very High") %>%
+ggplot(aes(x = interest_rate, y = default_prob)) +
+  geom_point(alpha = 0.4, color ='purple') +
+  geom_smooth(method = "glm", method.args = list(family = "gaussian")) +
+  labs(title = "Credit Worthiness: Very High",
+       x = "interest_rate (%)",
+       y = "default_prob") +
+  xlim(0, 0.5) + 
+  ylim(0, 0.5) + 
+  theme_minimal()
+```
+</details>
+
+```{r, figures-quad, fig.show="hold", out.width="50%", message=FALSE, warning=FALSE, echo=FALSE}
+print(p1)
+print(p2)
+print(p3)
+print(p4)
+```
+
+While a linear-ish relationship can be found, the slope is different for each group.
+
+## Handling Endogeneity - Instrumental Variables
+
+Hopefully by now, I have successfully convinced you that 1) endogeneity is a problem, 2) it is common, and 3) it is often well hidden. Borrowing my undergraduate adviser's words, for a scientist looking to study the world through data plagued by endogeneity, it is [akin to] trying to see your reflection in rippling water. The image you see is distorted by the waves.
+
+In our case, when measuring how interest rates affect default probability, the *waves* of credit_worthiness affect our perception. So what do we do? We design a special kind of mirror. 
+
+### Identifying Instrumental Variables
+We find a variable that does the following:
+
+1. directly influences interest rates (Relevance)
+
+2. only effects default probability through its effect on interest rates (Exclusion restriction)
+
+3. is independent of underlying credit worthiness (Exogeneity)
+
+The biggest challenge is identifying the variable that achieves those conditions. My idea was to create a ***regulatory zone*** instrument. In real life, *regulatory_zones* create different regions having slightly different banking regulations that affect interest rates. These regulations don’t directly influence whether a person will default, nor are they related to the person’s underlying credit worthiness. 
+
+In lieu of actual data, I'll add a *regulatory_zone* variable to our baseline simulation, simulating a regulatory change that affects  *interest_rate* but not *default_probability* directly. We'll also ensure that it is independent of *credit_worthiness*.
+
+```{r}
+simulate_credit_data_with_instrument <- function(n = 1000) {
+  data <- simulate_credit_data(n) # base simulation
+  
+  data$regulatory_zone <- sample(c(0.05, 0.07, 0.1), n, replace = TRUE) # our instrument
+  
+  # mod interest_rate behavior so that it is affected by regulatory zones
+  data$interest_rate <- data$interest_rate + 
+                        data$regulatory_zone * 0.01 +  # regulatory effect
+                        rnorm(n, 0, 0.005)  # noise
+  
+  return(data)
+}
+
+credit_data_iv <- simulate_credit_data_with_instrument(1000)
+```
+
+### Utilizing Instrument Variables
+
+Once the instrument variables are *found*, the methodology, as we covered in the previous post, is just a two-stage least squares. 
+
+First stage: we regress the endogenous variable (*interest_rates*) on our instrument (*regulatory_zone*) and other controls.
+
+```{r}
+first_stage <- lm(interest_rate ~ regulatory_zone + business_age + annual_revenue + 
+                                  current_debt + credit_utilization + cash_flow_volatility,
+                  data = credit_data_iv)
+```
+
+Second stage: use these predicted interest rates to estimate their effect on default probability.
+
+```{R}
+# ivreg() fn uses the AER package to perform a 2-Stage Least Squares method
+iv_model <- ivreg(default_prob ~ business_age + annual_revenue + current_debt + 
+                                 interest_rate + credit_utilization + cash_flow_volatility | 
+                                 business_age + annual_revenue + current_debt + regulatory_zone + 
+                                 credit_utilization + cash_flow_volatility,
+                  data = credit_data_iv)
+```
+
+## What did IV achieve? 
+
+```{r}
+# Section 5: Evaluating the Impact of Instrumental Variables
+
+# Compare the relationship between interest rate and default probability
+relationship_comparison <- ggplot(credit_data_iv, aes(x = interest_rate, y = default_prob)) +
+  # Original naive relationship
+  geom_point(alpha = 0.4, aes(color = credit_worthiness)) +
+  geom_smooth(method = "lm", color = "red", se = FALSE, linetype = "dashed") +
+  # IV predicted relationship
+  geom_smooth(aes(y = predict(iv_model, credit_data_iv)), 
+             method = "lm", color = "blue", se = FALSE) +
+  scale_color_viridis_c() +
+  labs(title = "Interest Rate vs Default Probability: Naive vs IV",
+       subtitle = "Red = Naive relationship, Blue = IV-corrected relationship\nColor indicates underlying credit worthiness",
        x = "Interest Rate",
        y = "Default Probability",
        color = "Credit\nWorthiness") +
   theme_minimal()
 
-## Plot 2: Credit Worthiness Impact
-p2 <- credit_data %>%
-  pivot_longer(cols = c(interest_rate, default_prob),
-               names_to = "variable",
-               values_to = "value") %>%
-  ggplot(aes(x = credit_worthiness, y = value)) +
-  geom_point(alpha = 0.4) +
-  geom_smooth(method = "lm", se = FALSE) +
-  facet_wrap(~variable, scales = "free_y") +
-  labs(title = "Impact of Credit Worthiness",
-       subtitle = "Showing relationship with endogenous variables",
-       x = "Credit Worthiness",
-       y = "Variable Value") +
-  theme_minimal()
-
-## Plot 3: Coefficient Plot
-coef_plot <- tidy(naive_model) %>%
-  filter(term != "(Intercept)") %>%
-  ggplot(aes(x = reorder(term, estimate), y = estimate)) +
-  geom_col(fill = "steelblue", alpha = 0.7) +
+# Create coefficient comparison plot
+coef_comparison <- bind_rows(
+  # Naive model coefficients
+  broom::tidy(naive_model) %>% 
+    filter(term != "(Intercept)") %>%
+    mutate(model = "Naive OLS"),
+  # IV model coefficients
+  broom::tidy(iv_model) %>% 
+    filter(term != "(Intercept)") %>%
+    mutate(model = "IV 2SLS")
+) %>%
+  ggplot(aes(x = reorder(term, estimate), y = estimate, fill = model)) +
+  geom_col(position = "dodge", alpha = 0.7) +
   geom_errorbar(aes(ymin = estimate - std.error*1.96,
                     ymax = estimate + std.error*1.96),
+                position = position_dodge(width = 0.9),
                 width = 0.2) +
   coord_flip() +
-  labs(title = "Naive Model Coefficients",
-       subtitle = "Notice the potentially misleading interest rate effect",
+  scale_fill_brewer(palette = "Set1") +
+  labs(title = "Coefficient Estimates: Naive vs IV",
+       subtitle = "Notice the change in interest rate effect after IV correction",
        x = "Variable",
-       y = "Coefficient Estimate") +
+       y = "Coefficient Estimate",
+       fill = "Model Type") +
   theme_minimal()
 
-# Display plots
-print(p1)
-print(p2)
-print(coef_plot)
+# First stage relationship visualization
+first_stage_plot <- ggplot(credit_data_iv, 
+                          aes(x = as.factor(regulatory_zone), 
+                              y = interest_rate,
+                              fill = as.factor(regulatory_zone))) +
+  geom_boxplot(alpha = 0.7) +
+  labs(title = "First Stage: Regulatory Zones Impact on Interest Rates",
+       subtitle = "Showing the strength of our instrument",
+       x = "Regulatory Zone",
+       y = "Interest Rate",
+       fill = "Zone") +
+  theme_minimal() +
+  theme(legend.position = "none")
 
-# Calculate correlations to show the endogeneity structure
-cor_matrix <- credit_data %>%
-  select(credit_worthiness, interest_rate, default_prob) %>%
-  cor() %>%
-  round(3)
+# Calculate and display key metrics
+# First stage F-statistic
+first_stage_f <- summary(first_stage)$fstatistic[1]
 
-print("Correlation Matrix:")
-print(cor_matrix)
-```
-
-
-```{r, echo=FALSE}
-library(tidyverse)
-library(ggplot2)
-set.seed(1008)
-
-simulate_loan_data <- function(n_samples = 1000) {
-  # True underlying creditworthiness (unobserved)
-  creditworthiness <- rnorm(n_samples, mean = 0, sd = 1)
-  
-  # Generate business characteristics
-  business_age <- rpois(n_samples, lambda = 5)
-  annual_revenue <- exp(rnorm(n_samples, mean = 11, sd = 1))
-  
-  # Interest rate depends on creditworthiness and observables
-  interest_rate <- 5 + 
-                  -0.5 * creditworthiness +  # Higher creditworthiness → Lower rate
-                  -0.1 * business_age +
-                  -0.1 * log(annual_revenue) +
-                  rnorm(n_samples, mean = 0, sd = 0.5)
-  
-  # Default probability depends on creditworthiness and interest rate
-  default_prob <- plogis(-2 +
-                        -0.8 * creditworthiness +  # Higher creditworthiness → Lower default
-                        0.2 * interest_rate +
-                        -0.1 * business_age +
-                        -0.1 * log(annual_revenue))
-  
-  # Realize defaults
-  default <- rbinom(n_samples, size = 1, prob = default_prob)
-  
-  # Create dataset
-  data.frame(
-    business_age = business_age,
-    annual_revenue = annual_revenue,
-    interest_rate = interest_rate,
-    creditworthiness = creditworthiness,  # Usually unobserved
-    default = default
-  )
-}
-
-# Generate data
-loan_data <- simulate_loan_data()
-```
-
-```{r}
-genEndogData <- function(n=100){
-  sigma <- matrix(c(40,12,12,20), ncol=2)
-  de <- mvtnorm::rmvnorm(n=n, mean=c(0,0), sigma=sigma)
-  Z <- seq(1,5,length.out = n)
-  X <- 3*Z + de[,1]
-  Y <- 2*X + de[,2] 
-  data.frame(Y,X,Z)
-}
-
-test_data <- genEndogData()
-
-test_model <- glm(Z ~ X + Y,
-                  family = "gaussian",
-                  data = test_data)
-
-viz_test_data <- test_data %>%
-  mutate(
-    predicted_prob = predict(test_model, type = "response"),
-    X_group = cut(X, 
-                                breaks = quantile(X, probs = 0:5/5),
-                                labels = c("Very Low", "Low", "Medium", "High", "Very High"))
-  )
-
-# Plot relationships
-ggplot(viz_test_data, aes(x = Y, y = Z)) +
-  geom_point(alpha = 0.3, aes(color = X_group)) +
-  geom_smooth(method = "glm", method.args = list(family = "gaussian")) +
-  facet_wrap(~X_group) +
-  labs(title = "(target: Z) vs (value: Y)",
-       subtitle = "Grouped by: X",
-       x = "Y (%)",
-       y = "Z",
-       color = "X") +
-  theme_minimal()
-
-```
-
-```{r}
-genEndogData <- function(n=100){
-  sigma <- matrix(c(40,12,12,20), ncol=2)
-  de <- mvtnorm::rmvnorm(n=n, mean=c(0,0), sigma=sigma)
-  Z <- seq(1,5,length.out = n)
-  X <- 3*Z + de[,1]
-  Y <- 2*X + de[,2] 
-  data.frame(Y,X,Z)
-}
-
-test_data <- genEndogData()
-
-test_model <- glm(Z ~ X + Y,
-                  family = "gaussian",
-                  data = test_data)
-
-viz_test_data <- test_data %>%
-  mutate(
-    predicted_prob = predict(test_model, type = "response"),
-    Y_group = cut(Y, 
-                                breaks = quantile(Y, probs = 0:5/5),
-                                labels = c("Very Low", "Low", "Medium", "High", "Very High"))
-  )
-
-# Plot relationships
-ggplot(viz_test_data, aes(x = X, y = Z)) +
-  geom_point(alpha = 0.3, aes(color = Y_group)) +
-  geom_smooth(method = "glm", method.args = list(family = "gaussian")) +
-  facet_wrap(~Y_group) +
-  labs(title = "(target: Z) vs (value: X)",
-       subtitle = "Grouped by: Y",
-       x = "X (%)",
-       y = "Z",
-       color = "Y") +
-  theme_minimal()
-```
-
-
-```{r}
-# Fit naive model
-naive_model <- glm(default ~ interest_rate + business_age + log(annual_revenue),
-                  family = binomial(link = "logit"),
-                  data = loan_data)
-
-# Create visualization data
-viz_data <- loan_data %>%
-  mutate(
-    predicted_prob = predict(naive_model, type = "response"),
-    creditworthiness_group = cut(creditworthiness, 
-                                breaks = quantile(creditworthiness, probs = 0:5/5),
-                                labels = c("Very Low", "Low", "Medium", "High", "Very High"))
-  )
-
-# Plot relationships
-ggplot(viz_data, aes(x = interest_rate, y = default)) +
-  geom_point(alpha = 0.3, aes(color = creditworthiness_group)) +
-  geom_smooth(method = "glm", method.args = list(family = "binomial")) +
-  facet_wrap(~creditworthiness_group) +
-  labs(title = "Default Probability vs Interest Rate",
-       subtitle = "Grouped by Creditworthiness",
-       x = "Interest Rate (%)",
-       y = "Default Probability",
-       color = "Creditworthiness") +
-  theme_minimal()
-```
-
-```{r}
-# Simulate instruments
-simulate_instruments <- function(loan_data, n_samples = nrow(loan_data)) {
-  # Federal funds rate (varies by time)
-  fed_rate <- rep(runif(n_samples/20, 1, 3), each = 20) + 
-              rnorm(n_samples, 0, 0.1)
-  
-  # Bank liquidity (varies by region)
-  bank_liquidity <- rep(rnorm(n_samples/10), each = 10)
-  
-  # Create instrument dataset
-  data.frame(
-    fed_rate = fed_rate,
-    bank_liquidity = bank_liquidity,
-    # Interest rate spread (market-wide)
-    market_spread = 2 + 0.5 * fed_rate + rnorm(n_samples, 0, 0.2)
-  )
-}
-
-# Add instruments to our data
-loan_data <- cbind(loan_data, simulate_instruments(loan_data))
-
-# Two-Stage Least Squares (2SLS)
-# First stage: predict interest rates using instruments
-stage1 <- lm(interest_rate ~ fed_rate + bank_liquidity + market_spread +
-             business_age + log(annual_revenue),
-             data = loan_data)
-
-# Get predicted interest rates
-loan_data$predicted_rate <- predict(stage1)
-
-# Second stage: use predicted rates in default model
-stage2 <- glm(default ~ predicted_rate + business_age + log(annual_revenue),
-              family = binomial(link = "logit"),
-              data = loan_data)
-
-# Compare coefficients
-models_comparison <- data.frame(
-  Variable = names(coef(naive_model)),
-  Naive_Estimate = coef(naive_model),
-  IV_Estimate = c(coef(stage2)[1], 
-                 coef(stage2)["predicted_rate"],
-                 coef(stage2)[c("business_age", "log(annual_revenue)")])
+# R-squared comparison
+rsq_comparison <- tibble(
+  Model = c("Naive OLS", "IV 2SLS"),
+  R_squared = c(summary(naive_model)$r.squared,
+                summary(iv_model)$r.squared)
 )
+
+# Interest rate coefficient comparison
+interest_rate_coef <- bind_rows(
+  broom::tidy(naive_model) %>% 
+    filter(term == "interest_rate") %>%
+    mutate(model = "Naive OLS"),
+  broom::tidy(iv_model) %>% 
+    filter(term == "interest_rate") %>%
+    mutate(model = "IV 2SLS")
+) %>%
+  select(model, estimate, std.error)
+
+# Display results
+print(relationship_comparison)
+print(coef_comparison)
+print(first_stage_plot)
+
+cat("\nFirst Stage F-statistic:", round(first_stage_f, 2), "\n")
+cat("\nR-squared Comparison:\n")
+print(rsq_comparison)
+cat("\nInterest Rate Coefficient Comparison:\n")
+print(interest_rate_coef)
 ```
 
 ```{r}
-# Function to evaluate model performance
-evaluate_model <- function(model, data, predicted_rate = FALSE) {
-  # Get predictions
-  if(predicted_rate) {
-    data$interest_rate <- data$predicted_rate
-  }
-  predictions <- predict(model, newdata = data, type = "response")
-  
-  # Calculate metrics
-  auc <- pROC::auc(data$default, predictions)
-  
-  # Calculate calibration metrics
-  calibration <- data.frame(
-    pred_prob = predictions,
-    actual = data$default
-  ) %>%
-    mutate(bucket = cut(pred_prob, breaks = seq(0, 1, 0.1))) %>%
-    group_by(bucket) %>%
-    summarise(
-      n = n(),
-      pred = mean(pred_prob),
-      actual = mean(actual)
-    )
-  
-  list(auc = auc, calibration = calibration)
+# Create side-by-side coefficient plots
+naive_coef <- broom::tidy(naive_model) %>%
+  filter(term != "(Intercept)") %>%
+  mutate(model = "Naive Model")
+
+iv_coef <- broom::tidy(iv_model) %>%
+  filter(term != "(Intercept)") %>%
+  mutate(model = "IV Model")
+
+combined_coef_plot <- bind_rows(naive_coef, iv_coef) %>%
+  ggplot(aes(x = reorder(term, estimate), y = estimate, fill = model)) +
+  geom_col(position = position_dodge(width = 0.8), alpha = 0.7) +
+  geom_errorbar(aes(ymin = estimate - std.error*1.96,
+                    ymax = estimate + std.error*1.96),
+                position = position_dodge(width = 0.8),
+                width = 0.2) +
+  coord_flip() +
+  labs(title = "Coefficient Comparison: Naive vs IV Model",
+       subtitle = "Notice the difference in interest rate effect",
+       x = "Variable",
+       y = "Coefficient Estimate",
+       fill = "Model Type") +
+  scale_fill_manual(values = c("Naive Model" = "blue", "IV Model" = "red")) +
+  theme_minimal()
+
+# Create scatterplot with both model fits
+scatter_comparison <- ggplot(credit_data_iv, aes(x = interest_rate, y = default_prob)) +
+  geom_point(alpha = 0.6, aes(color = credit_worthiness)) +
+  # Add naive model fit
+  geom_smooth(method = "lm", color = "blue", se = FALSE, linetype = "dashed") +
+  # Add IV model fit
+  geom_smooth(aes(y = predict(iv_model, credit_data_iv)), 
+             method = "lm", color = "red", se = FALSE) +
+  scale_color_viridis_c() +
+  labs(title = "Interest Rate vs Default Probability: Model Comparison",
+       subtitle = "Blue dashed = Naive fit, Red solid = IV fit\nPoint color shows credit worthiness",
+       x = "Interest Rate",
+       y = "Default Probability",
+       color = "Credit\nWorthiness") +
+  theme_minimal()
+
+# Print plots
+print(combined_coef_plot)
+print(scatter_comparison)
+
+# Print numerical comparison of interest rate coefficients
+cat("\nInterest Rate Coefficient Comparison:\n")
+bind_rows(naive_coef, iv_coef) %>%
+  filter(term == "interest_rate") %>%
+  select(model, estimate, std.error) %>%
+  mutate(across(where(is.numeric), round, 3)) %>%
+  print()
+```
+
+```{r}
+# Load required packages
+library(tidyverse)
+library(Metrics)
+
+# Function to calculate all metrics
+calculate_metrics <- function(true_values, predictions, model_name, dataset_name) {
+  tibble(
+    model = model_name,
+    dataset = dataset_name,
+    rmse = rmse(true_values, predictions),
+    mae = mae(true_values, predictions),
+    r2 = cor(true_values, predictions)^2,
+    # Calculate calibration slope (should be close to 1)
+    calibration = coef(lm(true_values ~ predictions))[2],
+    # Calculate prediction range and standard deviation for stability
+    pred_sd = sd(predictions),
+    pred_range = diff(range(predictions))
+  )
 }
 
-# Compare models
-naive_perf <- evaluate_model(naive_model, loan_data)
-iv_perf <- evaluate_model(stage2, loan_data, predicted_rate = TRUE)
-```
-```{r}
-naive_perf
-```
-```{r}
-iv_perf
+# Generate predictions for both models
+get_predictions <- function(data, naive_model, iv_model) {
+  list(
+    naive = predict(naive_model, data),
+    iv = predict(iv_model, data)
+  )
+}
+
+# Evaluate on original data
+original_preds <- get_predictions(credit_data_iv, naive_model, iv_model)
+original_metrics <- bind_rows(
+  calculate_metrics(credit_data_iv$default_prob, original_preds$naive, 
+                   "Naive OLS", "Original"),
+  calculate_metrics(credit_data_iv$default_prob, original_preds$iv, 
+                   "IV 2SLS", "Original")
+)
+
+# Generate new test data
+set.seed(123)
+test_data <- simulate_credit_data_with_instrument(10000)
+test_preds <- get_predictions(test_data, naive_model, iv_model)
+test_metrics <- bind_rows(
+  calculate_metrics(test_data$default_prob, test_preds$naive, 
+                   "Naive OLS", "Test"),
+  calculate_metrics(test_data$default_prob, test_preds$iv, 
+                   "IV 2SLS", "Test")
+)
+
+# Combine all metrics
+all_metrics <- bind_rows(original_metrics, test_metrics) %>%
+  arrange(dataset, model) %>%
+  mutate(across(where(is.numeric), round, 4))
+
+# Display results
+print("Model Performance Metrics:")
+print(all_metrics)
+
+# Calculate additional stability metrics
+cat("\nPrediction Correlations between Models:\n")
+cat("Original Data:", round(cor(original_preds$naive, original_preds$iv), 3), "\n")
+cat("Test Data:", round(cor(test_preds$naive, test_preds$iv), 3), "\n")
+
+# Calculate mean absolute difference in predictions
+cat("\nMean Absolute Difference in Predictions:\n")
+cat("Original Data:", round(mean(abs(original_preds$naive - original_preds$iv)), 3), "\n")
+cat("Test Data:", round(mean(abs(test_preds$naive - test_preds$iv)), 3), "\n")
 ```
 
 
+
+## Practical Tips
+
+### When implementing, consider…
+
+1. Start simple
+
+The easiest trap to fall into is hastily implementing a complex set of methods that promise to solve everything. Begin with a single, strong, instrument, and only add complexity as needed. It is more important to validate each step thoroughly. 
+
+2. Test more than once
+
+“Testing” here goes beyond checking your instrument strength using first-stage F-statistics. Chances are, you are not a domain expert. Validate exclusion restriction using whatever domain knowledge is available. Finally, clearly explain the IV approach to stakeholders and make sure that there is an institutional-level (or at least team-level) buy-in. 
+
+3. Build robustly
+
+Data intake (data pipelines) is typically the most vulnerable and fragile area. It is also the area that tends to be blindly trusted, this should not be the case. Make sure to handle missing instrument data, create more than one fallback options, and document every assumption check.
+
+4. Monitor
+
+Good intuition will never be as powerful as carefully designed  monitoring. Track instrument strength over time, building especially guarded against how relationships between variables can change. 
+
+In my case, I designed monitoring dashboards and automated alerts that would alert the engineer in charge if the relationship between instruments and interest rates started to behave unexpectedly. 
+
+### A challenge for you
+
+Now that we have covered both the problem and the solution, it’s time that you challenged yourself. Review the models that you or your team is responsible for designing and/or maintaining. Are there any concerns for endogeneity? What are some promising instruments in your domain? Remember to start small, and work towards building a system that can handle comprehensive monitoring for all of your models.
+Solving endogeneity isn’t simply about building better models. It is about making better decisions that affect real businesses and people.
 
 
