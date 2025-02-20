@@ -27,43 +27,49 @@ click here for the packages used in this blog, along with quick descriptions
 library(ggplot2)
 
 library(xgboost) # only if you want to use the xgboost&#39;s feature importance
-library(AER)  # For instrumental variables regression</code></pre>
+library(AER)  # For instrumental variables regression
+library(Metrics) # for the metrics
+
+set.seed(7345)</code></pre>
 </details>
 <details>
 <summary>
 click here for the complete simulation code
 </summary>
 <pre class="r"><code>simulate_credit_data &lt;- function(n = 1000) {
-  # Keep the same credit worthiness distribution
   credit_worthiness &lt;- rnorm(n, mean = 0, sd = 1)
   
   tibble(
     credit_worthiness = credit_worthiness,
     
-    # Other variables remain the same
-    business_age = rexp(n, rate = 1/5) + abs(credit_worthiness),
-    annual_revenue = exp(rnorm(n, 11, 1) + 0.5 * credit_worthiness),
-    current_debt = exp(rnorm(n, 10, 0.8) - 0.3 * credit_worthiness),
-    cash_flow_volatility = rexp(n, rate = 2) - 0.2 * credit_worthiness,
+    # Most businesses are young, with decreasing frequency for older ones
+    business_age = rexp(n, rate = 1/5),  # mean of ~5 years
     
-    # Modified interest rate calculation:
-    # Better credit worthiness should lead to lower interest rates more dramatically
-    interest_rate = 0.05 + 0.15 * exp(-credit_worthiness) + rnorm(n, 0, 0.01),
-    # interest_rate = 0.05 + 0.03 * exp(-credit_worthiness) + rnorm(n, 0, 0.01),
+    # Log-normal distribution for realistic revenue distribution
+    annual_revenue = exp(rnorm(n, 11, 1.2)),  # mostly 20k~150k
     
-    credit_utilization = pmin(1, pmax(0, rbeta(n, 2, 4) - 0.3 * credit_worthiness)),
+    # Log-normal, mild correlation with revenue
+    current_debt = exp(rnorm(n, 10, 0.8)) * (1 + 0.2 * scale(annual_revenue)),
     
-    # Modified default probability:
-    # Now higher credit worthiness leads to higher default probability
-    # Removed the negative sign before credit_worthiness coefficient
-    default_prob = plogis(-2 - 1.5 * credit_worthiness + 
-                         0.2 * cash_flow_volatility +
-                         rnorm(n, 0, 0.3))
+    # Higher for smaller businesses
+    cash_flow_volatility = rexp(n, rate = 1) * (1 - 0.3 * scale(annual_revenue)),
+    
+    # Beta distribution for realistic ratio behavior
+    credit_utilization = rbeta(n, 2, 4),  # right-skewed, mostly under 0.6
+    
+    # Endogenous variables
+    # interest rate affected by credit worthiness
+    interest_rate = 0.05 + 0.03 * exp(-credit_worthiness) + rnorm(n, 0, 0.01),
+    
+    # default probability affected by credit worthiness and business fundamentals
+    default_prob = plogis(-2 - 1.2 * credit_worthiness +  # Credit worthiness effect
+                         0.3 * cash_flow_volatility +     # Business risk effect
+                         0.2 * credit_utilization +       # Utilization effect
+                         rnorm(n, 0, 0.5))                # Random noise
   )
 }
 
-# Generate our dataset
-set.seed(1008)
+# generate data
 credit_data &lt;- simulate_credit_data(1000)</code></pre>
 <blockquote>
 <p>Note: If you are the diligent type that is taking note of all the code, you’ll notice that I am using <strong><em>credit_data_iv</em></strong> instead of <strong><em>credit_data</em></strong> for all of the modeling &amp; visualization code below. Pretend for now that those two objects are exactly the same thing. Why one is in place of the other will make more sense later in the post.</p>
@@ -151,7 +157,7 @@ click here for the ggplot code
 </summary>
 <pre class="r"><code>onetoone &lt;- ggplot(credit_data_iv, aes(x = interest_rate, y = default_prob)) +
   geom_point(alpha = 0.4) +
-  geom_smooth(method = &quot;lm&quot;, color = &quot;red&quot;, se = FALSE) +
+  geom_smooth(method = &quot;lm&quot;, color = &quot;blue&quot;, se = FALSE) +
   labs(title = &quot;Interest Rate vs Default Probability&quot;,
        x = &quot;Interest Rate&quot;,
        y = &quot;Default Probability&quot;,
@@ -159,7 +165,7 @@ click here for the ggplot code
   theme_minimal()</code></pre>
 <pre class="r"><code>onetoone_w_credit &lt;- ggplot(credit_data_iv, aes(x = interest_rate, y = default_prob)) +
   geom_point(alpha = 0.6, aes(color = credit_worthiness)) +
-  geom_smooth(method = &quot;lm&quot;, color = &quot;red&quot;, se = FALSE) +
+  geom_smooth(method = &quot;lm&quot;, color = &quot;blue&quot;, se = FALSE) +
   scale_color_viridis_c() +
   labs(title = &quot;Interest Rate vs Default Probability&quot;,
        x = &quot;Interest Rate&quot;,
@@ -263,7 +269,7 @@ ggplot(aes(x = interest_rate, y = default_prob)) +
   
   # mod interest_rate behavior so that it is affected by regulatory zones
   data$interest_rate &lt;- data$interest_rate + 
-                        data$regulatory_zone * 0.01 +  # regulatory effect
+                        data$regulatory_zone * 0.1 +  # regulatory effect
                         rnorm(n, 0, 0.005)  # noise
   
   return(data)
@@ -289,35 +295,20 @@ iv_model &lt;- ivreg(default_prob ~ business_age + annual_revenue + current_debt
 </div>
 <div id="what-did-iv-achieve" class="section level2">
 <h2>What did IV achieve?</h2>
-<pre class="r"><code># Section 5: Evaluating the Impact of Instrumental Variables
-
-# Compare the relationship between interest rate and default probability
-relationship_comparison &lt;- ggplot(credit_data_iv, aes(x = interest_rate, y = default_prob)) +
-  # Original naive relationship
-  geom_point(alpha = 0.4, aes(color = credit_worthiness)) +
-  geom_smooth(method = &quot;lm&quot;, color = &quot;red&quot;, se = FALSE, linetype = &quot;dashed&quot;) +
-  # IV predicted relationship
-  geom_smooth(aes(y = predict(iv_model, credit_data_iv)), 
-             method = &quot;lm&quot;, color = &quot;blue&quot;, se = FALSE) +
-  scale_color_viridis_c() +
-  labs(title = &quot;Interest Rate vs Default Probability: Naive vs IV&quot;,
-       subtitle = &quot;Red = Naive relationship, Blue = IV-corrected relationship\nColor indicates underlying credit worthiness&quot;,
-       x = &quot;Interest Rate&quot;,
-       y = &quot;Default Probability&quot;,
-       color = &quot;Credit\nWorthiness&quot;) +
-  theme_minimal()
-
-# Create coefficient comparison plot
-coef_comparison &lt;- bind_rows(
-  # Naive model coefficients
-  broom::tidy(naive_model) %&gt;% 
-    filter(term != &quot;(Intercept)&quot;) %&gt;%
-    mutate(model = &quot;Naive OLS&quot;),
-  # IV model coefficients
-  broom::tidy(iv_model) %&gt;% 
-    filter(term != &quot;(Intercept)&quot;) %&gt;%
-    mutate(model = &quot;IV 2SLS&quot;)
-) %&gt;%
+<p>So what was all that? Let’s take it back to the basics. We initially identified a variable, <em>interest_rate</em>, which seemed like a promising explanatory variable but turned out to be highly endogeneious with our target. So we found a new variable, called an instrument, <em>regulatory_zone</em>, that is correlated with <em>interest_rate</em> but not the error term. This instrument helps to isolate the part of the explanatory variable that is not correlated with the error term. In essence, it allows for more accurate estimation of the relationship between the explanatory variable (<em>interest_rate</em>) and the dependent variable (<em>default_prob</em>).</p>
+<p>In order to do so, we used a two-stage least squares (2SLS) technique. In the first stage, <em>interest_rate</em> (our problematic variable) is regressed on <em>regulatory_zone</em> (instrument) along with other exogenous variables. This creates a new version of the <em>interest_rate</em> which is now effectively devoid of its correlation with the error term. Then, the original regression is estimated (with <em>default_prob</em> as the dependent variable), but this time using the predicted values from the first stage regression in place of the original <em>interest_rate</em>.</p>
+<p>Now that we did all that, we can see how things have shifted:</p>
+<div id="plot-of-coefficients-1" class="section level3">
+<h3>Plot of Coefficients</h3>
+<details>
+<summary>
+click here for the complete code
+</summary>
+<pre class="r"><code>coef_comparison &lt;- 
+  bind_rows(
+    broom::tidy(naive_model) %&gt;% filter(term != &quot;(Intercept)&quot;) %&gt;% mutate(model = &quot;Naive OLS&quot;),
+    broom::tidy(iv_model) %&gt;% filter(term != &quot;(Intercept)&quot;) %&gt;% mutate(model = &quot;IV 2SLS&quot;)
+  ) %&gt;%
   ggplot(aes(x = reorder(term, estimate), y = estimate, fill = model)) +
   geom_col(position = &quot;dodge&quot;, alpha = 0.7) +
   geom_errorbar(aes(ymin = estimate - std.error*1.96,
@@ -325,233 +316,58 @@ coef_comparison &lt;- bind_rows(
                 position = position_dodge(width = 0.9),
                 width = 0.2) +
   coord_flip() +
-  scale_fill_brewer(palette = &quot;Set1&quot;) +
+  scale_fill_manual(values = c(&quot;red&quot;, &quot;blue&quot;)) +
   labs(title = &quot;Coefficient Estimates: Naive vs IV&quot;,
        subtitle = &quot;Notice the change in interest rate effect after IV correction&quot;,
        x = &quot;Variable&quot;,
        y = &quot;Coefficient Estimate&quot;,
        fill = &quot;Model Type&quot;) +
-  theme_minimal()
-
-# First stage relationship visualization
-first_stage_plot &lt;- ggplot(credit_data_iv, 
-                          aes(x = as.factor(regulatory_zone), 
-                              y = interest_rate,
-                              fill = as.factor(regulatory_zone))) +
-  geom_boxplot(alpha = 0.7) +
-  labs(title = &quot;First Stage: Regulatory Zones Impact on Interest Rates&quot;,
-       subtitle = &quot;Showing the strength of our instrument&quot;,
-       x = &quot;Regulatory Zone&quot;,
-       y = &quot;Interest Rate&quot;,
-       fill = &quot;Zone&quot;) +
-  theme_minimal() +
-  theme(legend.position = &quot;none&quot;)
-
-# Calculate and display key metrics
-# First stage F-statistic
-first_stage_f &lt;- summary(first_stage)$fstatistic[1]
-
-# R-squared comparison
-rsq_comparison &lt;- tibble(
-  Model = c(&quot;Naive OLS&quot;, &quot;IV 2SLS&quot;),
-  R_squared = c(summary(naive_model)$r.squared,
-                summary(iv_model)$r.squared)
-)
-
-# Interest rate coefficient comparison
-interest_rate_coef &lt;- bind_rows(
-  broom::tidy(naive_model) %&gt;% 
-    filter(term == &quot;interest_rate&quot;) %&gt;%
-    mutate(model = &quot;Naive OLS&quot;),
-  broom::tidy(iv_model) %&gt;% 
-    filter(term == &quot;interest_rate&quot;) %&gt;%
-    mutate(model = &quot;IV 2SLS&quot;)
-) %&gt;%
-  select(model, estimate, std.error)
-
-# Display results
-print(relationship_comparison)</code></pre>
-<pre><code>## `geom_smooth()` using formula = &#39;y ~ x&#39;
-## `geom_smooth()` using formula = &#39;y ~ x&#39;</code></pre>
-<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-19-1.png" width="672" /></p>
-<pre class="r"><code>print(coef_comparison)</code></pre>
-<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-19-2.png" width="672" /></p>
-<pre class="r"><code>print(first_stage_plot)</code></pre>
-<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-19-3.png" width="672" /></p>
-<pre class="r"><code>cat(&quot;\nFirst Stage F-statistic:&quot;, round(first_stage_f, 2), &quot;\n&quot;)</code></pre>
-<pre><code>## 
-## First Stage F-statistic: 188.08</code></pre>
-<pre class="r"><code>cat(&quot;\nR-squared Comparison:\n&quot;)</code></pre>
-<pre><code>## 
-## R-squared Comparison:</code></pre>
-<pre class="r"><code>print(rsq_comparison)</code></pre>
-<pre><code>## # A tibble: 2 × 2
-##   Model     R_squared
-##   &lt;chr&gt;         &lt;dbl&gt;
-## 1 Naive OLS     0.869
-## 2 IV 2SLS       0.777</code></pre>
-<pre class="r"><code>cat(&quot;\nInterest Rate Coefficient Comparison:\n&quot;)</code></pre>
-<pre><code>## 
-## Interest Rate Coefficient Comparison:</code></pre>
-<pre class="r"><code>print(interest_rate_coef)</code></pre>
-<pre><code>## # A tibble: 2 × 3
-##   model     estimate std.error
-##   &lt;chr&gt;        &lt;dbl&gt;     &lt;dbl&gt;
-## 1 Naive OLS    0.512    0.0125
-## 2 IV 2SLS      0.858    0.592</code></pre>
-<pre class="r"><code># Create side-by-side coefficient plots
-naive_coef &lt;- broom::tidy(naive_model) %&gt;%
-  filter(term != &quot;(Intercept)&quot;) %&gt;%
-  mutate(model = &quot;Naive Model&quot;)
-
-iv_coef &lt;- broom::tidy(iv_model) %&gt;%
-  filter(term != &quot;(Intercept)&quot;) %&gt;%
-  mutate(model = &quot;IV Model&quot;)
-
-combined_coef_plot &lt;- bind_rows(naive_coef, iv_coef) %&gt;%
-  ggplot(aes(x = reorder(term, estimate), y = estimate, fill = model)) +
-  geom_col(position = position_dodge(width = 0.8), alpha = 0.7) +
-  geom_errorbar(aes(ymin = estimate - std.error*1.96,
-                    ymax = estimate + std.error*1.96),
-                position = position_dodge(width = 0.8),
-                width = 0.2) +
-  coord_flip() +
-  labs(title = &quot;Coefficient Comparison: Naive vs IV Model&quot;,
-       subtitle = &quot;Notice the difference in interest rate effect&quot;,
-       x = &quot;Variable&quot;,
-       y = &quot;Coefficient Estimate&quot;,
-       fill = &quot;Model Type&quot;) +
-  scale_fill_manual(values = c(&quot;Naive Model&quot; = &quot;blue&quot;, &quot;IV Model&quot; = &quot;red&quot;)) +
-  theme_minimal()
-
-# Create scatterplot with both model fits
-scatter_comparison &lt;- ggplot(credit_data_iv, aes(x = interest_rate, y = default_prob)) +
-  geom_point(alpha = 0.6, aes(color = credit_worthiness)) +
-  # Add naive model fit
-  geom_smooth(method = &quot;lm&quot;, color = &quot;blue&quot;, se = FALSE, linetype = &quot;dashed&quot;) +
-  # Add IV model fit
+  theme_minimal()</code></pre>
+</details>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-20-1.png" width="672" /></p>
+<p>The above coefficient comparison plot reveals an obvious and quite striking difference in the effect of <em>interest_rate</em> between the naive and IV models. While the naive model shows a moderate positive relationship, the IV model estimates a much larger effect with wider confidence intervals. This difference suggests that the naive model significantly underestimated the true impact of <em>interest_rate</em> on <em>default_prob</em>.</p>
+<p>Going back to the simulation code</p>
+<pre class="r"><code>default_prob = plogis(-2 - 1.2 * credit_worthiness +  
+                           0.3 * cash_flow_volatility + 
+                           0.2 * credit_utilization +  
+                           rnorm(n, 0, 0.5))        </code></pre>
+<p>we can see that the updated coefficient estimates coming from the IV 2SLS model is a much more grounded, and captures the effect of <em>interest_rate</em> on <em>defaut_prob</em> more accurately.</p>
+</div>
+<div id="interest-rate-vs-default-probability-1" class="section level3">
+<h3>Interest Rate vs Default Probability</h3>
+<details>
+<summary>
+click here for the complete code
+</summary>
+<pre class="r"><code>relationship_comparison &lt;- 
+  ggplot(credit_data_iv, aes(x = interest_rate, y = default_prob)) +
+  # naive relationship
+  geom_point(alpha = 0.4, aes(color = credit_worthiness)) +
+  geom_smooth(method = &quot;lm&quot;, color = &quot;red&quot;, se = FALSE) +
+  # iv predicted relationship
   geom_smooth(aes(y = predict(iv_model, credit_data_iv)), 
-             method = &quot;lm&quot;, color = &quot;red&quot;, se = FALSE) +
+             method = &quot;lm&quot;, color = &quot;blue&quot;, se = FALSE, linetype = &quot;dashed&quot;) +
   scale_color_viridis_c() +
-  labs(title = &quot;Interest Rate vs Default Probability: Model Comparison&quot;,
-       subtitle = &quot;Blue dashed = Naive fit, Red solid = IV fit\nPoint color shows credit worthiness&quot;,
+  labs(title = &quot;Interest Rate vs Default Probability; Naive vs IV&quot;,
+       subtitle = &quot;Blue = Naive relationship, Red = IV-corrected relationship&quot;,
        x = &quot;Interest Rate&quot;,
        y = &quot;Default Probability&quot;,
        color = &quot;Credit\nWorthiness&quot;) +
-  theme_minimal()
-
-# Print plots
-print(combined_coef_plot)</code></pre>
-<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-20-1.png" width="672" /></p>
-<pre class="r"><code>print(scatter_comparison)</code></pre>
-<pre><code>## `geom_smooth()` using formula = &#39;y ~ x&#39;
-## `geom_smooth()` using formula = &#39;y ~ x&#39;</code></pre>
-<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-20-2.png" width="672" /></p>
-<pre class="r"><code># Print numerical comparison of interest rate coefficients
-cat(&quot;\nInterest Rate Coefficient Comparison:\n&quot;)</code></pre>
-<pre><code>## 
-## Interest Rate Coefficient Comparison:</code></pre>
-<pre class="r"><code>bind_rows(naive_coef, iv_coef) %&gt;%
-  filter(term == &quot;interest_rate&quot;) %&gt;%
-  select(model, estimate, std.error) %&gt;%
-  mutate(across(where(is.numeric), round, 3)) %&gt;%
-  print()</code></pre>
-<pre><code>## Warning: There was 1 warning in `mutate()`.
-## ℹ In argument: `across(where(is.numeric), round, 3)`.
-## Caused by warning:
-## ! The `...` argument of `across()` is deprecated as of dplyr 1.1.0.
-## Supply arguments directly to `.fns` through an anonymous function instead.
-## 
-##   # Previously
-##   across(a:b, mean, na.rm = TRUE)
-## 
-##   # Now
-##   across(a:b, \(x) mean(x, na.rm = TRUE))</code></pre>
-<pre><code>## # A tibble: 2 × 3
-##   model       estimate std.error
-##   &lt;chr&gt;          &lt;dbl&gt;     &lt;dbl&gt;
-## 1 Naive Model    0.512     0.012
-## 2 IV Model       0.858     0.592</code></pre>
-<pre class="r"><code># Load required packages
-library(tidyverse)
-library(Metrics)
-
-# Function to calculate all metrics
-calculate_metrics &lt;- function(true_values, predictions, model_name, dataset_name) {
-  tibble(
-    model = model_name,
-    dataset = dataset_name,
-    rmse = rmse(true_values, predictions),
-    mae = mae(true_values, predictions),
-    r2 = cor(true_values, predictions)^2,
-    # Calculate calibration slope (should be close to 1)
-    calibration = coef(lm(true_values ~ predictions))[2],
-    # Calculate prediction range and standard deviation for stability
-    pred_sd = sd(predictions),
-    pred_range = diff(range(predictions))
-  )
-}
-
-# Generate predictions for both models
-get_predictions &lt;- function(data, naive_model, iv_model) {
-  list(
-    naive = predict(naive_model, data),
-    iv = predict(iv_model, data)
-  )
-}
-
-# Evaluate on original data
-original_preds &lt;- get_predictions(credit_data_iv, naive_model, iv_model)
-original_metrics &lt;- bind_rows(
-  calculate_metrics(credit_data_iv$default_prob, original_preds$naive, 
-                   &quot;Naive OLS&quot;, &quot;Original&quot;),
-  calculate_metrics(credit_data_iv$default_prob, original_preds$iv, 
-                   &quot;IV 2SLS&quot;, &quot;Original&quot;)
-)
-
-# Generate new test data
-set.seed(123)
-test_data &lt;- simulate_credit_data_with_instrument(10000)
-test_preds &lt;- get_predictions(test_data, naive_model, iv_model)
-test_metrics &lt;- bind_rows(
-  calculate_metrics(test_data$default_prob, test_preds$naive, 
-                   &quot;Naive OLS&quot;, &quot;Test&quot;),
-  calculate_metrics(test_data$default_prob, test_preds$iv, 
-                   &quot;IV 2SLS&quot;, &quot;Test&quot;)
-)
-
-# Combine all metrics
-all_metrics &lt;- bind_rows(original_metrics, test_metrics) %&gt;%
-  arrange(dataset, model) %&gt;%
-  mutate(across(where(is.numeric), round, 4))
-
-# Display results
-print(&quot;Model Performance Metrics:&quot;)</code></pre>
-<pre><code>## [1] &quot;Model Performance Metrics:&quot;</code></pre>
-<pre class="r"><code>print(all_metrics)</code></pre>
-<pre><code>## # A tibble: 4 × 8
-##   model     dataset    rmse    mae    r2 calibration pred_sd pred_range
-##   &lt;chr&gt;     &lt;chr&gt;     &lt;dbl&gt;  &lt;dbl&gt; &lt;dbl&gt;       &lt;dbl&gt;   &lt;dbl&gt;      &lt;dbl&gt;
-## 1 IV 2SLS   Original 0.0946 0.0494 0.817       0.818   0.221       2.18
-## 2 Naive OLS Original 0.0745 0.0512 0.862       1.00    0.186       1.59
-## 3 IV 2SLS   Test     0.140  0.053  0.742       0.661   0.271       6.07
-## 4 Naive OLS Test     0.0898 0.0514 0.827       0.890   0.213       3.92</code></pre>
-<pre class="r"><code># Calculate additional stability metrics
-cat(&quot;\nPrediction Correlations between Models:\n&quot;)</code></pre>
-<pre><code>## 
-## Prediction Correlations between Models:</code></pre>
-<pre class="r"><code>cat(&quot;Original Data:&quot;, round(cor(original_preds$naive, original_preds$iv), 3), &quot;\n&quot;)</code></pre>
-<pre><code>## Original Data: 0.969</code></pre>
-<pre class="r"><code>cat(&quot;Test Data:&quot;, round(cor(test_preds$naive, test_preds$iv), 3), &quot;\n&quot;)</code></pre>
-<pre><code>## Test Data: 0.974</code></pre>
-<pre class="r"><code># Calculate mean absolute difference in predictions
-cat(&quot;\nMean Absolute Difference in Predictions:\n&quot;)</code></pre>
-<pre><code>## 
-## Mean Absolute Difference in Predictions:</code></pre>
-<pre class="r"><code>cat(&quot;Original Data:&quot;, round(mean(abs(original_preds$naive - original_preds$iv)), 3), &quot;\n&quot;)</code></pre>
-<pre><code>## Original Data: 0.038</code></pre>
-<pre class="r"><code>cat(&quot;Test Data:&quot;, round(mean(abs(test_preds$naive - test_preds$iv)), 3), &quot;\n&quot;)</code></pre>
-<pre><code>## Test Data: 0.041</code></pre>
+  theme_minimal()</code></pre>
+</details>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-23-1.png" width="672" /></p>
+<p>In the updated scatter plot above, we can find an even more compelling effect. The naive model (represented by the blue dashed line) suggests a strong linear relationship between interest rates and default probability. However, as we’ve discussed before, looking at the gradient point colors that represent credit worthiness, we can see this relationship is largely driven by the underlying credit worithness. The IV model (represented by the red solid line) corrects for this endogeneity, showing a more modest slope that likely better represents the true causal relationship between interest rates and default probability.</p>
+</div>
+<div id="r-squared" class="section level3">
+<h3>R-squared</h3>
+<p>Finally, you can observe that the r-squared value of the naive model,</p>
+<pre class="r"><code>summary(naive_model)$r.squared</code></pre>
+<pre><code>## [1] 0.479535</code></pre>
+<p>is greater than the r-squared value observed in the IV model,</p>
+<pre class="r"><code>summary(iv_model)$r.squared</code></pre>
+<pre><code>## [1] 0.1420803</code></pre>
+<p>The decrease in r-squared actually strengthens the validity of the IV model. The naive model’s higher r-squared was artificially inflated by capturing the effect of the unobserved credit worthiness. The IV model’s lower r-squared reflects that it’s isolating just hte causal effect of <em>interest_rate</em>, removing the confounding influence of credit worthiness. The IV model resulted in the intended effect of <strong>more accurate measure of the true effect of interest_rate</strong>.</p>
+</div>
 </div>
 <div id="practical-tips" class="section level2">
 <h2>Practical Tips</h2>
