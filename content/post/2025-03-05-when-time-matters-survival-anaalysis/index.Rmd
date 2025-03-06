@@ -1,0 +1,293 @@
+---
+title: 'When Time Matters: Survival Anaalysis'
+author: Youbeen Shim
+date: '2025-03-05'
+slug: when-time-matters-survival-anaalysis
+categories: []
+tags: []
+---
+
+Imagine. You are working at Candy Emporium, a subscription business that delivers sweets to customers monthly. A key risk in your business is customer churn - losing your valuable customers. Some customers have been with your company for years, others for just weeks. Some have already canceled, while others are still active. How do you make sense of this messy, incomplete picture to predict who might leave next? Perhaps, you could even understand what expensive mistakes you are making that are costing you customers. 
+Having dipped my toes in both academia and industry, I frequently notice how survival analysis remains underutilized despite its practical value. Many data scientists are quick to reach for regression or classification techniques, but when time itself becomes a critical factor in your analysis, survival methods provide insights that other approaches simply cannot. 
+
+Today, we will cover the three most common approaches in survival analysis, namely: Kaplan-Meier method, log rank test, and Cox’s proportional-hazards model.
+
+## Motivation: Why is survival analysis useful?
+
+In many scenarios, the main outcome that is being assessed is the time to an event of interest. The generic name for this is *survival time*, which can be confusing since time *survived* could just as easily apply to time taken for a customer to churn as it could to time from diagnosis of a disease to death.
+
+Of course, linear models are very powerful, and one could argue that you could use the simpler multivariate linear model with *survival_time* as the dependent variable to conduct a similar study. However, data collection processes are commonly conducted a finite number of times on a fixed interval, and it is typical for some of the individuals to not have experienced the event of interest at the end. Moreover, survival data are rarely normally distributed and often skewed, compromising usually of many early events and relatively few late ones. <abbr title="that happens more often you might think">These scenarios</abbr> make survival analysis particularly attractive.
+
+## Core concepts
+
+### Survival function
+
+The survival probability (also called the survivor function) $S(t)$ is the probability that an individual survives beyond time $t$. Mathematically, if $T$ is the survival time (which is a random variable), then:
+
+$$S(t) = P(T > t)$$
+
+In plain language, $S(t)$ tells us what fraction of our population is still "*alive*" (hasn't experienced the event) at time $t$. This function always starts at $1$ (everyone is alive at the beginning) and decreases toward $0$ as time goes on.
+
+But what makes working with $S(t)$ tricky?
+
+### Censoring
+
+The biggest challenge is that most of the time, only some individuals have experienced the event and, subsequently, survival times will be unknown for the subset of the study group. This phenomenon is called censoring, and while there is a distinction between <abbr title="event, assuming it were to occur, happens after a certain specific time">right</abbr>, <abbr title="the event happened prior to a certain specific time">left</abbr>, and <abbr title="the event happened in between two specific intervals">interval</abbr> censoring, we will focus on right censoring for simplification. 
+
+For example, in a 5-year study of cancer recurrence:
+
+* If a patient has a recurrence at year 3, we know their exact survival time (3 years)
+* If a patient drops out of the study after 2 years with no recurrence, they are "censored" at 2 years
+* If a patient completes the study with no recurrence, they are censored at 5 years
+
+As the observations are incomplete, it may be intuitive to discard them as we move forward with the analysis. However, this would not only waste valuable information, but also likely bias our results. 
+
+Instead, we change the question from “did the event happen?” to <abbr title="more strictly, the question would be: what is the risk of the event happening at each point in time, given survival up to that point?">“what is the risk of the event happening, given that it has not happened yet?”</abbr>.
+
+This brings us to our third and final key concept. 
+
+### Hazard function
+
+The hazard, denoted by $h(t)$ or $\lambda(t)$, is the probability that an individual who is under observation at a time $t$ and has not experienced an event yet  has an <abbr title="the so-called \“instantaneous risk\”">event at that time</abbr>. Mathematically:
+
+$$h(t) = \lim_{\Delta t \to 0} \frac{P(t \leq T < t + \Delta t | T \geq t)}{\Delta t}$$
+
+Which may look intimidating, but really just simply asks the following: if you've survived until time $t$, what's the probability you'll experience the event in the next small time interval?
+
+Note that, in contrast to the survivor function, which focuses on not having an event, the hazard function focuses on the event occurring.
+
+What's particularly useful about the hazard function is that it can take different shapes:
+
+* Constant hazard (exponential distribution): the risk never changes
+* Increasing hazard (Weibull distribution): the risk grows over time (think aging)
+* Decreasing hazard: the risk diminishes over time
+* Bathtub-shaped hazard: high risk early, then low, then high again (think human mortality)
+
+
+## Core Methods
+
+Let’s return to where we started: Candy Emporium. You like your subscribers, you want to retain them, so you devised a strategy. A portion of your customers will receive a series of standard email campaigns; a separate portion of your customers will receive a personalized recommendation in the form of surprise gifts. Which strategy is more effective? Let’s set up.
+
+```{r}
+# Load required libraries
+library(survival)
+library(ggplot2)
+library(ggsurvfit)
+library(dplyr)
+
+# Let's create our candy subscription dataset
+# We'll simulate 200 customers, 100 for each retention strategy
+set.seed(123) # For reproducibility
+
+# Strategy A: Standard email campaigns
+# Strategy B: Personalized recommendations + surprise gifts
+
+# Create subscription duration data (in months)
+subscription_data <- data.frame(
+  customer_id = 1:200,
+  strategy = rep(c("A", "B"), each = 100),
+  subscription_months = c(
+    # Strategy A durations (more customers churning earlier)
+    rexp(100, rate = 1/8),
+    # Strategy B durations (better retention overall)
+    rexp(100, rate = 1/12)
+  ),
+  # Create censoring indicator (some customers still active)
+  # We'll consider ~30% of customers to still be active
+  status = sample(c(1, 0), 200, replace = TRUE, prob = c(0.7, 0.3))
+)
+
+# Round months to integers for simplicity
+subscription_data$subscription_months <- round(subscription_data$subscription_months)
+# Ensure minimum of 1 month
+subscription_data$subscription_months <- pmax(subscription_data$subscription_months, 1)
+
+# Take a peek at our data
+head(subscription_data)
+
+# Fit Kaplan-Meier survival curves
+km_fit <- survfit(Surv(subscription_months, status) ~ strategy, 
+                  data = subscription_data)
+
+# Display the results
+summary(km_fit)
+
+# Visualize the Kaplan-Meier curves
+ggsurvfit(km_fit) +
+  labs(
+    title = "Customer Retention by Strategy",
+    subtitle = "Kaplan-Meier Survival Curves",
+    x = "Months Since Subscription Start",
+    y = "Retention Probability"
+  ) +
+  add_confidence_interval() +
+  add_risktable() +
+  scale_color_discrete(
+    name = "Strategy",
+    labels = c("A: Standard", "B: Personalized")
+  )
+```
+
+### Seeing Survival: Kaplan-Meier Method
+
+The Kaplan-Meier method, commonly abbreviated as KM method, provides us with a way to estimate the survival function using the observed data. It is particularly useful due to its nonparametric quality, which does not require assumptions about the underlying distribution. 
+
+The core principle that drives this method is the fact that the probability of surviving paste a certain point is the product of the conditional probabilities of surviving each preceding time point.
+
+For each time point $t_i$ where at least one event occurs:
+
+1. Count how many individuals are still "at risk" ($n_i$)
+2. Count how many events occur at that time ($d_i$)
+3. Calculate the conditional probability of surviving: $p_i = (n_i - d_i)/n_i$
+4. Update the cumulative survival probability: $S(t_i) = S(t_{i-1}) \times p_i$
+
+Let's implement this in R with a fictitious patient dataset:
+
+```{r}
+# Load required libraries
+library(survival)
+library(ggplot2)
+library(ggsurvfit)
+library(dplyr)
+
+# Create a sample dataset
+set.seed(123)
+patient_data <- data.frame(
+  time = c(5, 8, 12, 15, 22, 24, 30, 36, 40, 45),
+  status = c(1, 0, 1, 1, 0, 1, 1, 0, 1, 0),  # 1=event occurred, 0=censored
+  treatment = c("A", "A", "A", "A", "A", "B", "B", "B", "B", "B")
+)
+
+# Fit Kaplan-Meier survival curves
+km_fit <- survfit(Surv(time, status) ~ treatment, data = patient_data)
+
+# Display the results
+summary(km_fit)
+
+# Visualize the Kaplan-Meier curves
+ggsurvfit(km_fit) +
+  labs(
+    title = "Kaplan-Meier Survival Curves by Treatment",
+    x = "Time (months)",
+    y = "Survival Probability"
+  ) +
+  add_confidence_interval() +
+  add_risktable()
+```
+
+A simple visual inspection of the Kaplan-Meier curve provides several insights:
+
+Median survival time: The point at which the curve crosses the 0.5 probability line (on the y-axis)
+Shape of decline: Gradual? Steep? At which point in time?
+(Potential for) long-term survival: Is there a point where the <abbr title=this suggests that some patients may never experience the event>curve plateaus</abbr>?
+Comparison between groups: By visually inspecting the KM curves of different groups
+### Testing the Difference: Log Rank Test
+Say that we’ve plotted the Kaplan-Meier curves, and there is (at least visually) a pretty big gap between the two curves. How do we know if the differences are statistically significant?
+The log-rank test is the standard non-parametric approach for comparing survival curves between groups. Methodologically, the test answers the question:
+> At each event time, is the number of events in each group what we would expect if the groups had identical risk? 
+
+At  a high level, we follow the procedure below:
+0. Null hypothesis: there is no difference in survival between groups
+Look at each time point where an event occurs
+Compare the observed number of events in each group to what would be expected if the groups had equal risk
+Combine these comparisons across all time points, creating our test statistic
+Return a p-value, which examines if the differences are likely due to chance
+
+<Code> 
+
+### Handling Multiple Variables: Cox’s Proportional Hazards Model
+So far, we visualized and compared survival curves, but how do we <abbr title=an extremely common need in research>adjust for other factors</abbr> that might influence survival?
+Analogous to a multiple regression model, Cox’s proportional hazards model enables the difference between survival times of particular groups to be tested while quantifying and adjusting for other covariates. 
+Note: Being *semi*-parametric, the Cox model does not require assumptions regarding the shape of the baseline hazard function. However, the model does assume that covariates multiply the hazard by specific factors.
+The model is expressed as:
+$$h(t|X) = h_0(t) \exp(\beta_1 X_1 + \beta_2 X_2 + ... + \beta_p X_p)$$
+Where:
+$h(t|X)$ is the hazard at time $t$ for an individual with covariate values $X$
+$h_0(t)$ is the baseline hazard (left unspecified)
+$\beta_i$ are the coefficients we estimate
+$X_i$ are our covariates (age, treatment, etc.)
+The exponentiated coefficients, $\exp(\beta_i)$, give us **hazard ratios** – the multiplicative effect on the hazard for a one-unit increase in the corresponding covariate.
+Returning to our example, we can expand it by including age as a covariate:
+<Code>
+<Interpretation>
+How do we interpret this?
+Treatment B reduces the risk of the event by 55% (1 - 0.45) compared to Treatment A
+Each additional year of age increases the risk by 8%
+
+## Typical Ways that Assumptions are Violated
+
+As with any statistical method, survival analysis has its limitations and potential pitfalls.
+
+### Proportional Hazards
+
+While the Kaplan-Meier method does not, both the log rank test and <abbr title="which literally contains the assumption in the name">Cox’s proportional hazards model</abbr> require that the effect of each covariate is constant over time. 
+
+In other words, if the hypothetical Treatment X cuts the risk of a patient’s death by half at month 1, it should still cut the risk in half at month 12, 18, or 108.
+
+Checking this assumption, thankfully, is fairly straightforward with R.
+
+<Code: Visual inspection>
+
+The easier of the two methods involve a visual inspection. The assumption of proportional hazards is equivalent to assuming that the difference between the logarithms of the hazards for the two treatments does not change with time. This in turn is equivalent to saying that the difference between the logarithms of the cumulative hazard functions is constant. In the above graph, the lines for the two treatments are roughly parallel, suggesting that the proportional hazards assumption is reasonable in our case.
+
+<Code: Schoenfeld residuals>
+
+If the assumption holds, the scaled Schoenfeld residuals should be randomly distributed around zero with no time trend. A significant p-value suggests the assumption is violated.
+
+If the proportional hazards assumption does not hold, other than considering alternative models, you could 1) <abbr title="note: prevents estimating hazard ratios for the stratified variable">stratify by the problematic variable</abbr> 2) <abbr title="note: may be computationally intensive for large datasets">add time-dependent coefficients</abbr>, or 3) split the follow-up time into intervals that do follow proportional hazards. Dive deeper [here](https://www.bookdown.org/rwnahhas/RMPH/survival-phassumption.html).
+
+### Competing Risks
+
+What if we are studying cancer patient’s survival times, and the patient dies from a traffic accident? Such scenarios that prevent us from observing the event of interest, while uncommon, are very real risks.
+
+Typically, these are treated similarly to censored events, but this can lead to biased results. 
+
+### Informative Censoring
+
+Key assumption in survival analysis is non-informative censoring. The fact that a client or a patient has dropped out should not give any information about the individual’s hazard, and thus their risk should be the same as those who remain in  the study. 
+
+This assumption is often violated in practice. Patients who discontinue a trial, perhaps due to side effects they have been experiencing, may have different underlying risk profiles. Sensitivity analysis should be considered and conducted in order to assess the impact of potentially informative censoring.
+
+### Time-Varying Covariates
+
+Drug resistance, treatment exposures, and biomarker levels are examples of covariates whose values may change over time during the follow-up period. While the Cox model can be [extended](https://pmc.ncbi.nlm.nih.gov/articles/PMC6015946/) to handle such variables, it requires specialized approach and a more careful interpretation. 
+
+## Next Steps
+
+The methods that I have covered today focus primarily on baseline assumptions and common scenarios. However, survival analysis has since only grown, and there are both methodologies and models that extend beyond these fundamentals. If you are interested, or if the assumptions go beyond what we covered today, consider exploring the following:
+
+### Parametric Models
+
+As we’ve established before, Cox’s proportional hazards model is semi-parametric. Parametric models, which depend on more assumptions but provide a more precise prediction, specify the baseline hazard function utilizing distributions such as:
+
+* Weibull for increasing or decreasing hazards;
+* Exponential for constant hazards; and
+* Log-normal or log-logistic for non-monotonic hazards
+
+### Random Forest approach
+
+Machine learning approaches such as [Random Survival Forest](https://www.frontiersin.org/journals/oncology/articles/10.3389/fonc.2020.551420/full) can capture complex non-linear relationships and interactions between covariates without requiring the proportional hazards assumption. In my experience it is [more computationally complex and more challenging to interpret](https://pubmed.ncbi.nlm.nih.gov/36169048/), but shines when there are more events and samples. 
+
+### Joint Models
+
+There is a subclass of “joint” models that attempt to account for the complex **relationship** between longitudinal biomarker trajectories and survival outcomes, providing more accurate and comprehensive analyses in clinical research settings. They include [Flexible Parametric Joint Models](https://journals.sagepub.com/doi/pdf/10.1177/1536867X1301300112) and [Shared Random Effects Models](https://pmc.ncbi.nlm.nih.gov/articles/PMC4503792/), but require a thorough consideration of the longitudinal data before implementation. 
+
+## Challenge
+
+Whether it be patient outcomes, customer churn, equipment failure, or any process where timing matters, survival analysis helps to answer not just “if” but “when” events occur and what factors influence their timing. 
+
+Introducing survival analysis to clients often transforms their understanding of their data. The ability to visualize survival curves, compare them with mathematical and methodological rigor, and model the effects of different variables opens new avenues for decision-making and research. 
+
+Think about this as you go forward: How can you reframe your current objectives to be time-to-event oriented? Do you encounter censorship in your data? What decisions can you help drive by quantifying survival differences between 2+ groups?  And, as always, please let me know how it goes. 
+
+##  References
+
+Bewick, V., Cheek, L., & Ball, J. (2004). Statistics review 12: Survival analysis. Critical Care, 8(5), 389-394. https://doi.org/10.1186/cc2955
+
+Clark, T. G., Bradburn, M. J., Love, S. B., & Altman, D. G. (2003). Survival Analysis Part I: Basic concepts and first analyses. British Journal of Cancer, 89(2), 232-238. https://doi.org/10.1038/sj.bjc.6601118
+
+Jenkins, S. P. (2005). Survival Analysis. Unpublished Manuscript, Institute for Social and Economic Research, University of Essex. Retrieved from https://citeseerx.ist.psu.edu/document?repid=rep1&type=pdf&doi=9bb46b98492c0d8e33ffbddab4a0f99d84f3f0c0
+
+Kassambara, A., Kosinski, M., & Biecek, P. (2017). Cox Proportional-Hazards Model. STHDA. Retrieved March 5, 2025, from https://www.sthda.com/english/wiki/cox-proportional-hazards-model
+
+
