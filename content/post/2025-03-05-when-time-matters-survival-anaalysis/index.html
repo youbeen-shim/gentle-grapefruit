@@ -56,134 +56,46 @@ Having dipped my toes in both academia and industry, I frequently notice how sur
 </div>
 <div id="core-methods" class="section level2">
 <h2>Core Methods</h2>
-<p>Let’s return to where we started: Candy Emporium. You like your subscribers, you want to retain them, so you devised a strategy. A portion of your customers will receive a series of standard email campaigns; a separate portion of your customers will receive a personalized recommendation in the form of surprise gifts. Which strategy is more effective? Let’s set up.</p>
-<pre class="r"><code># Load required libraries
-library(survival)
-library(ggplot2)
-library(ggsurvfit)
-library(dplyr)</code></pre>
-<pre><code>## 
-## Attaching package: &#39;dplyr&#39;</code></pre>
-<pre><code>## The following objects are masked from &#39;package:stats&#39;:
-## 
-##     filter, lag</code></pre>
-<pre><code>## The following objects are masked from &#39;package:base&#39;:
-## 
-##     intersect, setdiff, setequal, union</code></pre>
-<pre class="r"><code># Let&#39;s create our candy subscription dataset
-# We&#39;ll simulate 200 customers, 100 for each retention strategy
-set.seed(123) # For reproducibility
-
-# Strategy A: Standard email campaigns
-# Strategy B: Personalized recommendations + surprise gifts
+<p>Let’s return to where we started: Candy Emporium. You like your subscribers, you want to retain them, so you devised a strategy. A <abbr title="yes, this is not an ideal set-up for testing as it lacks control, but it's more straightforward.">portion</abbr> of your customers will receive a series of standard email campaigns; a separate portion of your customers will receive a personalized recommendation in the form of surprise gifts. Which strategy is more effective? Let’s set up.</p>
+<details>
+<summary>
+click here to for full code to generate sample data
+</summary>
+<p>We will simulate 200 customers, 100 for each retention strategy. Remember that:</p>
+<ul>
+<li>Strategy A: Standard email campaigns</li>
+<li>Strategy B: Personalized recommendations + surprise gifts</li>
+</ul>
+<pre class="r"><code>library(dplyr)
+set.seed(1008)
 
 # Create subscription duration data (in months)
 subscription_data &lt;- data.frame(
   customer_id = 1:200,
   strategy = rep(c(&quot;A&quot;, &quot;B&quot;), each = 100),
   subscription_months = c(
-    # Strategy A durations (more customers churning earlier)
-    rexp(100, rate = 1/8),
-    # Strategy B durations (better retention overall)
-    rexp(100, rate = 1/12)
+    rexp(100, rate = 1/8), # assuming that more customers will churn earlier
+    rexp(100, rate = 1/12) # designating this as the &quot;better&quot; retention strategy
   ),
-  # Create censoring indicator (some customers still active)
-  # We&#39;ll consider ~30% of customers to still be active
-  status = sample(c(1, 0), 200, replace = TRUE, prob = c(0.7, 0.3))
-)
-
-# Round months to integers for simplicity
-subscription_data$subscription_months &lt;- round(subscription_data$subscription_months)
-# Ensure minimum of 1 month
-subscription_data$subscription_months &lt;- pmax(subscription_data$subscription_months, 1)
-
-# Take a peek at our data
-head(subscription_data)</code></pre>
+  # censoring indicator (in this case, implying that the customers are still active/retained)
+  status = sample(c(1, 0), 200, replace = TRUE, prob = c(0.7, 0.3)) # assuming that ~30% of customers to still be active 
+) %&gt;%
+  mutate(subscription_months = pmax(round(subscription_months), 1)) # rounding months, but ensuring that it is at least 1</code></pre>
+</details>
 <pre><code>##   customer_id strategy subscription_months status
-## 1           1        A                   7      1
-## 2           2        A                   5      1
-## 3           3        A                  11      1
-## 4           4        A                   1      1
-## 5           5        A                   1      0
-## 6           6        A                   3      1</code></pre>
-<pre class="r"><code># Fit Kaplan-Meier survival curves
-km_fit &lt;- survfit(Surv(subscription_months, status) ~ strategy, 
-                  data = subscription_data)
-
-# Display the results
-summary(km_fit)</code></pre>
-<pre><code>## Call: survfit(formula = Surv(subscription_months, status) ~ strategy, 
-##     data = subscription_data)
-## 
-##                 strategy=A 
-##  time n.risk n.event survival std.err lower 95% CI upper 95% CI
-##     1    100       7   0.9300  0.0255      0.88131        0.981
-##     2     88       9   0.8349  0.0378      0.76403        0.912
-##     3     76       6   0.7690  0.0433      0.68857        0.859
-##     4     69       3   0.7355  0.0455      0.65148        0.830
-##     5     64      10   0.6206  0.0509      0.52845        0.729
-##     6     54       1   0.6091  0.0512      0.51653        0.718
-##     7     53       4   0.5631  0.0523      0.46947        0.676
-##     8     48       6   0.4928  0.0531      0.39901        0.609
-##     9     41       3   0.4567  0.0531      0.36363        0.574
-##    10     35       4   0.4045  0.0531      0.31280        0.523
-##    11     30       2   0.3775  0.0528      0.28697        0.497
-##    12     27       5   0.3076  0.0515      0.22160        0.427
-##    13     21       4   0.2490  0.0493      0.16893        0.367
-##    14     14       1   0.2312  0.0489      0.15279        0.350
-##    15     13       2   0.1957  0.0474      0.12170        0.315
-##    18      9       1   0.1739  0.0469      0.10258        0.295
-##    20      8       1   0.1522  0.0458      0.08441        0.274
-##    21      7       1   0.1304  0.0441      0.06725        0.253
-##    22      5       1   0.1044  0.0423      0.04716        0.231
-##    32      3       1   0.0696  0.0400      0.02253        0.215
-##    36      2       1   0.0348  0.0317      0.00583        0.208
-## 
-##                 strategy=B 
-##  time n.risk n.event survival std.err lower 95% CI upper 95% CI
-##     1    100       9   0.9100  0.0286      0.85560        0.968
-##     2     88       5   0.8583  0.0351      0.79216        0.930
-##     3     81       1   0.8477  0.0362      0.77956        0.922
-##     4     78       4   0.8042  0.0404      0.72886        0.887
-##     5     72       5   0.7484  0.0446      0.66581        0.841
-##     6     66       8   0.6577  0.0494      0.56760        0.762
-##     7     58       4   0.6123  0.0510      0.52016        0.721
-##     8     53       4   0.5661  0.0521      0.47269        0.678
-##     9     48       1   0.5543  0.0523      0.46069        0.667
-##    10     46       1   0.5423  0.0525      0.44845        0.656
-##    11     45       4   0.4941  0.0531      0.40018        0.610
-##    12     40       1   0.4817  0.0532      0.38794        0.598
-##    13     37       4   0.4296  0.0534      0.33667        0.548
-##    14     33       1   0.4166  0.0534      0.32407        0.536
-##    15     32       1   0.4036  0.0533      0.31157        0.523
-##    16     29       4   0.3479  0.0527      0.25854        0.468
-##    17     24       2   0.3189  0.0521      0.23148        0.439
-##    18     22       1   0.3044  0.0518      0.21816        0.425
-##    19     21       3   0.2609  0.0501      0.17913        0.380
-##    20     18       1   0.2464  0.0494      0.16644        0.365
-##    21     16       1   0.2310  0.0486      0.15296        0.349
-##    22     12       1   0.2118  0.0482      0.13554        0.331
-##    24     11       1   0.1925  0.0475      0.11868        0.312
-##    32      8       1   0.1685  0.0473      0.09718        0.292
-##    33      7       1   0.1444  0.0463      0.07707        0.271
-##    42      3       1   0.0963  0.0500      0.03482        0.266
-##    45      2       1   0.0481  0.0422      0.00863        0.269
-##    52      1       1   0.0000     NaN           NA           NA</code></pre>
-<pre class="r"><code># Visualize the Kaplan-Meier curves
-ggsurvfit(km_fit) +
-  labs(
-    title = &quot;Customer Retention by Strategy&quot;,
-    subtitle = &quot;Kaplan-Meier Survival Curves&quot;,
-    x = &quot;Months Since Subscription Start&quot;,
-    y = &quot;Retention Probability&quot;
-  ) +
-  add_confidence_interval() +
-  add_risktable() +
-  scale_color_discrete(
-    name = &quot;Strategy&quot;,
-    labels = c(&quot;A: Standard&quot;, &quot;B: Personalized&quot;)
-  )</code></pre>
-<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-1-1.png" width="672" /></p>
+## 1           1        A                   3      1
+## 2           2        A                   3      0
+## 3           3        A                   5      1
+## 4           4        A                   1      0
+## 5           5        A                   4      0
+## 6           6        A                   2      1</code></pre>
+<pre><code>##     customer_id strategy subscription_months status
+## 195         195        B                   1      0
+## 196         196        B                  39      0
+## 197         197        B                  22      1
+## 198         198        B                   3      1
+## 199         199        B                   7      1
+## 200         200        B                   5      1</code></pre>
 <div id="seeing-survival-kaplan-meier-method" class="section level3">
 <h3>Seeing Survival: Kaplan-Meier Method</h3>
 <p>The Kaplan-Meier method, commonly abbreviated as KM method, provides us with a way to estimate the survival function using the observed data. It is particularly useful due to its nonparametric quality, which does not require assumptions about the underlying distribution.</p>
@@ -195,85 +107,132 @@ ggsurvfit(km_fit) +
 <li>Calculate the conditional probability of surviving: <span class="math inline">\(p_i = (n_i - d_i)/n_i\)</span></li>
 <li>Update the cumulative survival probability: <span class="math inline">\(S(t_i) = S(t_{i-1}) \times p_i\)</span></li>
 </ol>
-<p>Let’s implement this in R with a fictitious patient dataset:</p>
-<pre class="r"><code># Load required libraries
-library(survival)
+<p>Once the data is appropriately prepared (in our case, it was designed in such a way), it is relatively simple to fit the Kaplan-Meier survival curves.</p>
+<pre class="r"><code>library(survival)
 library(ggplot2)
 library(ggsurvfit)
-library(dplyr)
 
-# Create a sample dataset
-set.seed(123)
-patient_data &lt;- data.frame(
-  time = c(5, 8, 12, 15, 22, 24, 30, 36, 40, 45),
-  status = c(1, 0, 1, 1, 0, 1, 1, 0, 1, 0),  # 1=event occurred, 0=censored
-  treatment = c(&quot;A&quot;, &quot;A&quot;, &quot;A&quot;, &quot;A&quot;, &quot;A&quot;, &quot;B&quot;, &quot;B&quot;, &quot;B&quot;, &quot;B&quot;, &quot;B&quot;)
-)
-
-# Fit Kaplan-Meier survival curves
-km_fit &lt;- survfit(Surv(time, status) ~ treatment, data = patient_data)
-
-# Display the results
-summary(km_fit)</code></pre>
-<pre><code>## Call: survfit(formula = Surv(time, status) ~ treatment, data = patient_data)
-## 
-##                 treatment=A 
-##  time n.risk n.event survival std.err lower 95% CI upper 95% CI
-##     5      5       1    0.800   0.179       0.5161            1
-##    12      3       1    0.533   0.248       0.2142            1
-##    15      2       1    0.267   0.226       0.0507            1
-## 
-##                 treatment=B 
-##  time n.risk n.event survival std.err lower 95% CI upper 95% CI
-##    24      5       1      0.8   0.179       0.5161            1
-##    30      4       1      0.6   0.219       0.2933            1
-##    40      2       1      0.3   0.239       0.0631            1</code></pre>
-<pre class="r"><code># Visualize the Kaplan-Meier curves
-ggsurvfit(km_fit) +
+km_fit &lt;- survfit(Surv(subscription_months, status) ~ strategy, 
+                  data = subscription_data)</code></pre>
+<p>Which can then be printed in a table form using the summary() function, or</p>
+<pre class="r"><code>summary(km_fit)</code></pre>
+<p>more commonly, in a chart represented as a curve.</p>
+<pre class="r"><code>ggsurvfit(km_fit) +
   labs(
-    title = &quot;Kaplan-Meier Survival Curves by Treatment&quot;,
-    x = &quot;Time (months)&quot;,
-    y = &quot;Survival Probability&quot;
+    title = &quot;Customer Retention by Strategy&quot;,
+    x = &quot;Months Since Subscription Start&quot;,
+    y = &quot;Retention Probability&quot;
   ) +
   add_confidence_interval() +
-  add_risktable()</code></pre>
-<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-2-1.png" width="672" /></p>
+  add_risktable() +
+  scale_color_discrete(
+    name = &quot;Strategy&quot;,
+    labels = c(&quot;A: Standard&quot;, &quot;B: Personalized&quot;)
+  )</code></pre>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-5-1.png" width="672" /></p>
 <p>A simple visual inspection of the Kaplan-Meier curve provides several insights:</p>
-<p>Median survival time: The point at which the curve crosses the 0.5 probability line (on the y-axis)
-Shape of decline: Gradual? Steep? At which point in time?
-(Potential for) long-term survival: Is there a point where the <abbr title=this suggests that some patients may never experience the event>curve plateaus</abbr>?
-Comparison between groups: By visually inspecting the KM curves of different groups
-### Testing the Difference: Log Rank Test
-Say that we’ve plotted the Kaplan-Meier curves, and there is (at least visually) a pretty big gap between the two curves. How do we know if the differences are statistically significant?
-The log-rank test is the standard non-parametric approach for comparing survival curves between groups. Methodologically, the test answers the question:
-&gt; At each event time, is the number of events in each group what we would expect if the groups had identical risk?</p>
-<p>At a high level, we follow the procedure below:
-0. Null hypothesis: there is no difference in survival between groups
-Look at each time point where an event occurs
-Compare the observed number of events in each group to what would be expected if the groups had equal risk
-Combine these comparisons across all time points, creating our test statistic
-Return a p-value, which examines if the differences are likely due to chance</p>
-<p><Code></p>
+<ul>
+<li>Median survival time: The point at which the curve crosses the 0.5 probability line (on the y-axis)</li>
+<li>Shape of decline: Gradual? Steep? At which point in time?</li>
+<li>(Potential for) long-term survival: Is there a point where the <abbr title="this suggests that some patients may never experience the event">curve plateaus</abbr>?</li>
+<li>Comparison between groups: By visually inspecting the KM curves of different groups</li>
+</ul>
+</div>
+<div id="testing-the-difference-log-rank-test" class="section level3">
+<h3>Testing the Difference: Log Rank Test</h3>
+<p>Say that we’ve plotted the Kaplan-Meier curves, and there is (at least visually) a pretty big gap between the two curves. How do we know if the differences are statistically significant?
+The log-rank test is the standard non-parametric approach for comparing survival curves between groups. Methodologically, the test answers the question:</p>
+<blockquote>
+<p>At each event time, is the number of events in each group what we would expect if the groups had identical risk?</p>
+</blockquote>
+<p>At a high level, we follow the procedure below:</p>
+<ol start="0" style="list-style-type: decimal">
+<li>Null hypothesis: there is no difference in survival between groups</li>
+<li>Look at each time point where an event occurs</li>
+<li>Compare the observed number of events in each group to what would be expected if the groups had equal risk</li>
+<li>Combine these comparisons across all time points, creating our test statistic</li>
+<li>Return a p-value, which examines if the differences are likely due to chance</li>
+</ol>
+<p>In R, again, it ends up being pretty straight forward:</p>
+<pre class="r"><code># log-rank test: note the survdiff() function in stead of survfit() function for KM
+log_rank &lt;- survdiff(Surv(subscription_months, status) ~ strategy, 
+                    data = subscription_data)
+log_rank</code></pre>
+<pre><code>## Call:
+## survdiff(formula = Surv(subscription_months, status) ~ strategy, 
+##     data = subscription_data)
+## 
+##              N Observed Expected (O-E)^2/E (O-E)^2/V
+## strategy=A 100       64     57.5     0.745      1.42
+## strategy=B 100       78     84.5     0.506      1.42
+## 
+##  Chisq= 1.4  on 1 degrees of freedom, p= 0.2</code></pre>
+<p>The Log-Rank Statistic follows a chi-square distribution with degrees of freedom equal to the number of groups minus 1 (so 1 in our case here).</p>
+<pre class="r"><code>p_value &lt;- 1 - pchisq(log_rank$chisq, df = 1)
+p_value</code></pre>
+<pre><code>## [1] 0.2328082</code></pre>
+<p>In our example, our p-value indicates that there is not enough evidence of a difference in retention between strategies (Bummer).</p>
 </div>
 <div id="handling-multiple-variables-coxs-proportional-hazards-model" class="section level3">
 <h3>Handling Multiple Variables: Cox’s Proportional Hazards Model</h3>
-<p>So far, we visualized and compared survival curves, but how do we <abbr title=an extremely common need in research>adjust for other factors</abbr> that might influence survival?
-Analogous to a multiple regression model, Cox’s proportional hazards model enables the difference between survival times of particular groups to be tested while quantifying and adjusting for other covariates.
-Note: Being <em>semi</em>-parametric, the Cox model does not require assumptions regarding the shape of the baseline hazard function. However, the model does assume that covariates multiply the hazard by specific factors.
-The model is expressed as:
-<span class="math display">\[h(t|X) = h_0(t) \exp(\beta_1 X_1 + \beta_2 X_2 + ... + \beta_p X_p)\]</span>
-Where:
-<span class="math inline">\(h(t|X)\)</span> is the hazard at time <span class="math inline">\(t\)</span> for an individual with covariate values <span class="math inline">\(X\)</span>
-<span class="math inline">\(h_0(t)\)</span> is the baseline hazard (left unspecified)
-<span class="math inline">\(\beta_i\)</span> are the coefficients we estimate
-<span class="math inline">\(X_i\)</span> are our covariates (age, treatment, etc.)
-The exponentiated coefficients, <span class="math inline">\(\exp(\beta_i)\)</span>, give us <strong>hazard ratios</strong> – the multiplicative effect on the hazard for a one-unit increase in the corresponding covariate.
-Returning to our example, we can expand it by including age as a covariate:
-<Code>
-<Interpretation>
-How do we interpret this?
-Treatment B reduces the risk of the event by 55% (1 - 0.45) compared to Treatment A
-Each additional year of age increases the risk by 8%</p>
+<p>So far, we visualized and compared survival curves, but how do we <abbr title="an extremely common need in research">adjust for other factors</abbr> that might influence survival?
+Analogous to a multiple regression model, Cox’s proportional hazards model enables the difference between survival times of particular groups to be tested while quantifying and adjusting for other covariates.</p>
+<p>Note: Being <em>semi</em>-parametric, the Cox model does not require assumptions regarding the shape of the baseline hazard function. However, the model does assume that covariates multiply the hazard by specific, consistent, factors.</p>
+<p>The model is expressed as:</p>
+<p><span class="math display">\[h(t|X) = h_0(t) \exp(\beta_1 X_1 + \beta_2 X_2 + ... + \beta_p X_p)\]</span>
+Where:</p>
+<ul>
+<li><span class="math inline">\(h(t|X)\)</span> is the hazard at time <span class="math inline">\(t\)</span> for an individual with covariate values <span class="math inline">\(X\)</span></li>
+<li><span class="math inline">\(h_0(t)\)</span> is the baseline hazard (left unspecified)</li>
+<li><span class="math inline">\(\beta_i\)</span> are the coefficients we estimate</li>
+<li><span class="math inline">\(X_i\)</span> are our covariates (age, treatment, etc.)</li>
+</ul>
+<p>The exponentiated coefficients, <span class="math inline">\(\exp(\beta_i)\)</span>, give us <strong>hazard ratios</strong> – the multiplicative effect on the hazard for a one-unit increase in the corresponding covariate.</p>
+<p>Returning to our example, we can expand it by including customer characteristics as covariates. Let’s see… <abbr title="monthly subscription price tier, higher tier being more premium"><em>price_tier</em></abbr>, <abbr title="customer age group. something like 1) student 2) young adult 3) working adult 4) retired adult"><em>age_group</em></abbr>, <abbr title="whether they had subscription services offered by our company before"><em>prior_subscriptions</em></abbr>, and <abbr title="whether they were referred"><em>referred</em></abbr> seem like reasonable, realistic covariates.</p>
+<pre class="r"><code>subscription_data &lt;- subscription_data %&gt;%
+  mutate(
+    price_tier = sample(1:3, 200, replace = TRUE, prob = c(0.3, 0.5, 0.2)),
+    age_group = sample(1:4, 200, replace = TRUE),
+    prior_subscriptions = rpois(200, lambda = 2),
+    referred = sample(c(0, 1), 200, replace = TRUE, prob = c(0.7, 0.3))
+  )</code></pre>
+<p>Which we can then plug in the model.</p>
+<pre class="r"><code>cox_model &lt;- coxph(
+  Surv(subscription_months, status) ~ strategy + price_tier + 
+        age_group + prior_subscriptions + referred, 
+  data = subscription_data
+)
+
+summary(cox_model)</code></pre>
+<pre><code>## Call:
+## coxph(formula = Surv(subscription_months, status) ~ strategy + 
+##     price_tier + age_group + prior_subscriptions + referred, 
+##     data = subscription_data)
+## 
+##   n= 200, number of events= 142 
+## 
+##                         coef exp(coef) se(coef)      z Pr(&gt;|z|)
+## strategyB           -0.22072   0.80194  0.17457 -1.264    0.206
+## price_tier          -0.02626   0.97408  0.12267 -0.214    0.830
+## age_group           -0.04397   0.95699  0.07482 -0.588    0.557
+## prior_subscriptions -0.03474   0.96585  0.06636 -0.524    0.601
+## referred            -0.06890   0.93342  0.18390 -0.375    0.708
+## 
+##                     exp(coef) exp(-coef) lower .95 upper .95
+## strategyB              0.8019      1.247    0.5696     1.129
+## price_tier             0.9741      1.027    0.7659     1.239
+## age_group              0.9570      1.045    0.8265     1.108
+## prior_subscriptions    0.9659      1.035    0.8481     1.100
+## referred               0.9334      1.071    0.6509     1.339
+## 
+## Concordance= 0.551  (se = 0.029 )
+## Likelihood ratio test= 2.28  on 5 df,   p=0.8
+## Wald test            = 2.29  on 5 df,   p=0.8
+## Score (logrank) test = 2.29  on 5 df,   p=0.8</code></pre>
+<p>Notice how the summary function conveniently exponentiates the coefficients for us in the second table above.</p>
+<p><abbr title="assuming that the p-value fell below our previously determined level">How do we interpret the results?</abbr></p>
+<p>First, we see that Strategy B (personalized recommendations + surprise gifts) has a hazard ratio of 0.801 compared to Strategy A. This means that Strategy B reduces churn risk by approximately 20% (1 - .801) when controlling for other factors.</p>
+<p>Similarly, the hazard ratio of <em>referred</em> is 0.933, meaning that the customers who were referred by friends have approximately 7% lower churn risk than those who found our services by themselves. If, for instance, the hazard ratio of <em>prior_subscriptions</em> was 1.080, it would mean that each additional prior subscription that a customer had increases their risk of churn by 8%.</p>
 </div>
 </div>
 <div id="typical-ways-that-assumptions-are-violated" class="section level2">
@@ -283,11 +242,27 @@ Each additional year of age increases the risk by 8%</p>
 <h3>Proportional Hazards</h3>
 <p>While the Kaplan-Meier method does not, both the log rank test and <abbr title="which literally contains the assumption in the name">Cox’s proportional hazards model</abbr> require that the effect of each covariate is constant over time.</p>
 <p>In other words, if the hypothetical Treatment X cuts the risk of a patient’s death by half at month 1, it should still cut the risk in half at month 12, 18, or 108.</p>
-<p>Checking this assumption, thankfully, is fairly straightforward with R.</p>
-<p>&lt;Code: Visual inspection&gt;</p>
-<p>The easier of the two methods involve a visual inspection. The assumption of proportional hazards is equivalent to assuming that the difference between the logarithms of the hazards for the two treatments does not change with time. This in turn is equivalent to saying that the difference between the logarithms of the cumulative hazard functions is constant. In the above graph, the lines for the two treatments are roughly parallel, suggesting that the proportional hazards assumption is reasonable in our case.</p>
-<p>&lt;Code: Schoenfeld residuals&gt;</p>
-<p>If the assumption holds, the scaled Schoenfeld residuals should be randomly distributed around zero with no time trend. A significant p-value suggests the assumption is violated.</p>
+<p>Checking this assumption, thankfully, is fairly straightforward. Note that the assumption of proportional hazards is equivalent to assuming that the difference between the logarithms of the hazards for the two treatments does not change with time. This, in turn, is equivalent to saying that the difference between the logarithms of the cumulative hazard functions is constant.</p>
+<p>In R, the function cox.zph() uses <abbr title="the difference between the observed covariate values and their expected values">Schoenfield residuals</abbr> to test for proportional hazards. Intuitively, if the effect of the covarite is constant over time, the plot of the residuals across time should not have a pattern or trend. Practically, you’re looking for <abbr title="a systematic pattern (like an upward or downward trend) suggests the effect of that variable changes over time">random scatter</abbr> around a horizontal line at y=0.</p>
+<pre class="r"><code>ph_test &lt;- cox.zph(cox_model)
+
+par(mfrow = c(2, 2))
+plot(ph_test[1], main=&quot;Strategy&quot;) 
+plot(ph_test[2], main=&quot;Price Tier&quot;)
+plot(ph_test[4], main=&quot;Prior Subscriptions&quot;)  
+plot(ph_test[5], main=&quot;Referred&quot;)  </code></pre>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-10-1.png" width="672" /></p>
+<p>In the above figure, the lines are roughly parallel, suggesting that the proportional hazards assumption is reasonable.</p>
+<p>Another easy test is to simply check the p-values.</p>
+<pre class="r"><code>ph_test</code></pre>
+<pre><code>##                      chisq df    p
+## strategy            0.0524  1 0.82
+## price_tier          0.7268  1 0.39
+## age_group           0.4771  1 0.49
+## prior_subscriptions 0.7865  1 0.38
+## referred            0.4036  1 0.53
+## GLOBAL              2.0931  5 0.84</code></pre>
+<p>A p-value that is greater than 0.05 implies that the assumption is met.</p>
 <p>If the proportional hazards assumption does not hold, other than considering alternative models, you could 1) <abbr title="note: prevents estimating hazard ratios for the stratified variable">stratify by the problematic variable</abbr> 2) <abbr title="note: may be computationally intensive for large datasets">add time-dependent coefficients</abbr>, or 3) split the follow-up time into intervals that do follow proportional hazards. Dive deeper <a href="https://www.bookdown.org/rwnahhas/RMPH/survival-phassumption.html">here</a>.</p>
 </div>
 <div id="competing-risks" class="section level3">
