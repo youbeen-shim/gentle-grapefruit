@@ -288,3 +288,5 @@ In our example, while the overall treatment effect was positive, the multilevel 
 Connecting the significance of our research to our product partners, this would mean reconsidering a blanket rollout and instead creating a targeted implementation strategy that considers the segments that we have created. 
 
 Multilevel modeling isn't just a statistical technique. It's a way of thinking about variation and heterogeneity in your data that can lead to more nuanced insights and better decision-making. If nothing else, remember this: average effects can hide important variation. When your data has a natural grouping structure, consider the multilevel approach to uncover the full story behind your numbers.
+
+## References
