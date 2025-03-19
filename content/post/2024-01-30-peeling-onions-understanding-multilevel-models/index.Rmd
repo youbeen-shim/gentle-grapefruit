@@ -7,104 +7,284 @@ categories: []
 tags: []
 ---
 
-```{r}
-# Load required libraries
-library(tidyverse)
-library(ggplot2)
-library(scales)
+Let's start with a question that sounds like it could be a start of a bad joke:
 
-# Create enhanced synthetic data with more points and clearer patterns
-create_adoption_data <- function() {
-  # Define our segments
-  wealth_tiers <- c("Free Tier", "HENRY", "Mega Rich")
-  locations <- c("Rural", "Suburban", "Urban")
-  
-  # Create data frame with multiple points per segment
-  data <- expand_grid(
-    wealth_tier = wealth_tiers,
-    location = locations,
-    sample_point = 1:10  # Create 10 points per segment
-  ) %>%
-    mutate(
-      location = factor(location, levels = c("Rural", "Suburban", "Urban")),
-      # Create baseline rates that vary by wealth tier
-      baseline_rate = case_when(
-        wealth_tier == "Free Tier" ~ 
-          case_when(
-            location == "Rural" ~ runif(n(), 0.06, 0.08),
-            location == "Suburban" ~ runif(n(), 0.07, 0.09),
-            location == "Urban" ~ runif(n(), 0.08, 0.10)
-          ),
-        wealth_tier == "HENRY" ~ 
-          case_when(
-            location == "Rural" ~ runif(n(), 0.09, 0.11),
-            location == "Suburban" ~ runif(n(), 0.11, 0.13),
-            location == "Urban" ~ runif(n(), 0.13, 0.15)
-          ),
-        wealth_tier == "Mega Rich" ~ 
-          case_when(
-            location == "Rural" ~ runif(n(), 0.12, 0.14),
-            location == "Suburban" ~ runif(n(), 0.14, 0.16),
-            location == "Urban" ~ runif(n(), 0.16, 0.18)
-          )
-      )
-    ) %>%
-    # Add improvement rates that vary by segment
-    mutate(
-      improvement_factor = case_when(
-        wealth_tier == "Free Tier" ~ 
-          case_when(
-            location == "Rural" ~ 1.35,
-            location == "Suburban" ~ 1.30,
-            location == "Urban" ~ 1.25
-          ),
-        wealth_tier == "HENRY" ~ 
-          case_when(
-            location == "Rural" ~ 1.25,
-            location == "Suburban" ~ 1.30,
-            location == "Urban" ~ 1.35
-          ),
-        wealth_tier == "Mega Rich" ~ 
-          case_when(
-            location == "Rural" ~ 1.30,
-            location == "Suburban" ~ 1.25,
-            location == "Urban" ~ 1.20
-          )
-      ),
-      # Calculate improved rate with some random noise
-      improved_rate = baseline_rate * improvement_factor + rnorm(n(), 0, 0.002)
-    )
-  
-  return(data)
+What are the similarities between analyzing student performance across different schools, tracking patient outcomes across hospitals, and measuring user engagement across different product features? 
+
+<abbr title="there is (typically) some natural group or hierarchy in the data (sorry if you were looking forward to a joke)">Answer</abbr>
+
+## Cost of Missing the Hierarchy
+
+Often, hierarchy is difficult to conceive. Back in 2022, I was working as a product data scientist at a fintech startup, spending a lot of time with both the core product team and the marketing team on client engagement. As a part of my work, I introduced and popularized a new customer segmentation that considered the clients’ short-term financial priority on top of typical metrics such as their demographics. It helped us predict customer churn much more consistently and helped the growth team design targeted strategies for customers. 
+
+However, a benefit that I at the time did *not* expect was a deeper insight into feature engagement. 
+
+A product manager came to me with what seemed like a straightforward A/B test. They were testing a new feature that was hoping to increase customer engagement, and the initial results looked very promising - a whooping 17% bump overall on our primary metric. When I applied the new customer segment, however, we saw that the effect varied dramatically across different user groups. Some segments showed a 30% improvement, while others, it actually decreased by 5%. 
+
+When we looked at the entirety of our customer base, we were ignoring the hierarchical structure in the data, and by doing so, we risked:
+
+* underestimating uncertainty in our estimates
+* missing important group-level effects
+* making incorrect inferences about individual-level relationships, and 
+* failing to account for correlation within groups
+
+## Limitations of Traditional Approaches
+
+In <abbr title="admittedly limited">my experience</abbr>, precursor to multilevel modeling is one of two approaches:
+
+### fit one modeling for everything, ignoring group structure
+
+This is the same mistake that I made when I first designed the A/B test for the new customer engagement feature. Of course, hindsight is 20/20 and this approach does have its advantages: we can use all the available data & the interpretation is relatively straightforward. But as we have already seen in my example, this ignores systematic variation between groups which often leads to misleading conclusions. Furthermore, if the effect within groups is strong enough, it negates the validity of our models as it violates the independence assumptions that are core to regression modeling. 
+
+### fit completely separate models for each group
+
+Perhaps a little better. This approach has the strength of being able to capture group-specific effects fully, at least as much as the available data allows us to. However, it <abbr title="a waste of perfectly good data">ignores information shared across groups</abbr> and makes comparing across groups a challenge. It also necessitates that we collect a new pool of samples for each group, which increases the amount of data and processing power required. 
+
+## Intuition 
+
+We can think of <abbr title="also called hierarchical modeling or mixed-effects modeling">multilevel modeling</abbr> as a happy middle ground between the two flawed approaches. If the first approach is a *“complete pooling”* scenario where all segments are treated the same and the second approach is a *“no pooling”* scenario where each segment gets its own model, our goal is to perform a ***“partial pooling”*** where we can allow different groups to have their own variation while still learning from other groups.
+
+For example, in a simple regression model (complete pooling), we might say “every additional year of experience increases salary by $5,000,” which assumes that the effect of experience is identical across all industries. 
+
+$$Salary_i = \beta_0 + \beta_1 \cdot Experience_i + \varepsilon_i$$
+
+Where $\beta_1 = 5,000$ for all observations.
+
+A multilevel model can instead say “the effect of experience varies by industry, but industries in similar sectors tend to have similar patterns: each year in tech equates to an \$8,000 increase in salary, but a \$2,000 increase in retail.” 
+
+Level 1 (individual): 
+$$Salary_{ij} = \beta_{0j} + \beta_{1j} \cdot Experience_{ij} + \varepsilon_{ij}$$
+
+Level 2 (industry): 
+$$\beta_{0j} = \gamma_{00} + u_{0j}$$
+$$\beta_{1j} = \gamma_{10} + u_{1j}$$
+
+Where:
+
+* $\gamma_{00}$ is the overall average salary baseline
+* $\gamma_{10}$ is the average experience effect across all industries
+* $u_{0j}$ is the industry-specific deviation from the average baseline
+* $u_{1j}$ is the industry-specific deviation from the average experience effect
+  * Note: $u_{0j}$ and $u_{1j}$ are assumed to come from a normal distribution with mean 0
+
+The combined model that incorporates both level then becomes:
+$$Salary_{ij} = \gamma_{00} + \gamma_{10} \cdot Experience_{ij} + u_{0j} + u_{1j} \cdot Experience_{ij} + \varepsilon_{ij}$$
+
+The real magic in multilevel modeling, however, is that it optimally combines information from different sources based on their reliability. For segments with lots of precise data, the segment-specific estimate dominates. For segments with sparse or noisy data, the model "borrows strength" from the overall pattern.
+
+On a high level, we:
+
+1. Estimate an overall average effect across all groups
+2. Estimate how much groups typically vary from this average
+3. Produce group-specific estimates, which are **weighted combinations** of
+    a. Group’s own data
+    b. Overall average across groups
+
+Where the **weight** depends on:
+
+* <abbr title="larger groups rely more on their own data">Sample size within the group</abbr>
+* <abbr title="more consistent groups rely more on their own data">Within-group variance</abbr>
+* <abbr title="when groups are highly variable, individual group estimates rely more on their own data">Between-group variance</abbr>
+
+## Sanity Check: Does group membership actually matter?
+
+Intraclass Correlation Coefficient (ICC) is used to quantify the proportion of total variance that is attributable to group membership. It can be defined as:
+
+$$ICC = \frac{\tau_{00}}{\tau_{00} + \sigma^2}$$
+
+Where:
+
+* $\tau_{00}$ is the between-group variance, and
+* $\sigma^2$ is the within-group variance
+
+If ICC is close to 0, it implies that the group membership explains very little. When it is close to 1, it means that almost all of the variance occurs between groups. I typically see values between 0.05 and 0.3, which is [consistent with what is seen in social sciences](https://pmc.ncbi.nlm.nih.gov/articles/PMC8282204/). 
+
+## Simulating Multilevel Data
+
+In order to see the effects of multilevel modeling, we can first simulate data that resembles my A/B test scenario. The code below is adopted from [this article](https://library.virginia.edu/data/articles/simulating-multilevel-data), which is written by the very talented members of StatLab from my alma mater. 
+
+If you do not care for simulation, just know that we are creating a dataset with:
+
+* individual users (Level 1)
+* user segments (Level 2)
+* treatment indicator (whether or not a user received the new feature)
+* engagement outcome
+    * which is a sum of: the overall effect, segment specific effect, effect of the treatment, and user level variance
+* varying treatment effects across segments
+
+And that the data that we simulated does not violate critical assumptions for multilevel modeling, namely:
+
+* Random effects distribution: the group-level effects follow a multivariate normal distribution with mean of zero and an estimated variance-covariance matrix
+* <abbr title="observations within groups can however be correlated">Independence across groups</abbr>
+* Residual normality: Both individual-level residuals & group-level residuals are normally distributed, with homoscedasticity (constant variance)
+* Linearity: the relationships between predictors and outcomes are linear (after accounting for the multilevel structure) 
+Note: There are extensions of multilevel modeling that considers non-normal distributions, heteroskedasticity, and additional correlations, among other things. 
+
+<details><summary>click here for simulation code</summary>
+```{r, message=FALSE}
+library(lme4)  # package that will help with fitting multilevel models
+library(ggplot2)
+
+set.seed(1008)
+
+# simulation parameters
+n_segments <- 5  # the number of user segments
+users_per_segment <- 200  # number of users per segment
+total_users <- n_segments * users_per_segment
+segment_sd <- 2  # variance of engagement in each segment
+treatment_effect_sd <- 1.5 # variance of effect of treatment in each segment
+error_sd <- 2.5 # variance that each individual naturally carries
+
+# user data
+user_id <- 1:total_users
+segment_id <- rep(1:n_segments, each = users_per_segment)
+
+# > First input: Fixed effects
+overall_intercept <- 10  # engagement level that applies for everyone
+overall_treatment_effect <- 1.7  # implies 17% increase on average, like the example
+
+# > 2nd & 3rd input: Random effects (the variability across segments)
+# segment-level effects
+segment_baselines <- c(8, 10, 12, 9, 11)  # Different baseline engagement levels by segment
+segment_baseline <- rep(segment_baselines, each = users_per_segment)
+
+# segment-specific treatment effects (what creates the multilevel structure)
+# Segments 1 & 3: +30% effect
+# Segment 2: no effect 
+# Segment 4: -5% effect
+# Segment 5: +25% effect
+segment_treatment_effects <- c(3.0, 0, 3.0, -0.5, 2.5)
+treatment_effect <- rep(0, total_users) # if you dont receive treatment, then the effect of treatment is zero
+treatment <- rep(c(0, 1), total_users/2)  # which users get the treatment? split in half
+for (i in 1:total_users) {
+  if (treatment[i] == 1) {
+    treatment_effect[i] <- segment_treatment_effects[segment_id[i]]
+  } # Apply treatment effect only to treatment group
 }
 
-# Generate the data
-set.seed(123)
-data <- create_adoption_data()
+# > 4th input: individual-level noise
+user_error <- rnorm(total_users, 0, error_sd)
 
-# Create the visualization
-ggplot(data, aes(x = baseline_rate, y = improved_rate, color = location)) +
-  geom_point(size = 3, alpha = 0.7) +
-  geom_smooth(method = "lm", se = FALSE, linewidth = 1) +
-  facet_wrap(~wealth_tier) +
-  scale_color_manual(values = c("#66C2A5", "#FC8D62", "#8DA0CB")) +
-  scale_x_continuous(labels = scales::percent_format(accuracy = 1)) +
-  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
-  labs(
-    title = "Hierarchical Patterns in Product Adoption",
-    subtitle = "Each wealth tier shows distinct location-based patterns",
-    x = "Baseline Adoption Rate",
-    y = "Improved Adoption Rate",
-    color = "Location"
-  ) +
-  theme_minimal() +
-  theme(
-    plot.title = element_text(size = 14, face = "bold"),
-    plot.subtitle = element_text(size = 12),
-    axis.text = element_text(size = 10),
-    legend.position = "bottom",
-    panel.grid.major = element_line(color = "gray90"),
-    panel.grid.minor = element_line(color = "gray95")
-  )
+# ** 
+engagement <- overall_intercept + segment_baseline + treatment_effect + user_error
+
+ab_test_data <- data.frame(
+  user_id = user_id,
+  segment_id = factor(segment_id),
+  treatment = factor(treatment, labels = c("Control", "Treatment")),
+  engagement = engagement
+)
+```
+</details>
+
+```{r, echo=FALSE}
+head(ab_test_data)
 ```
 
+## Modeling
+
+Using the data generated, we can now compare the <abbr title="for sake of simplicity, we will skip the multiple modeling approach, which will have a similar performance to multilevel modeling in the generated data that we are using">two approaches</abbr>.
+
+### Simple Linear Model (Complete Pooling)
+
+```{r}
+# simple linear model (ignoring segment structure)
+simple_model <- lm(engagement ~ treatment, data = ab_test_data)
+summary(simple_model)
+
+# average treatment effect
+overall_mean <- aggregate(engagement ~ treatment, data = ab_test_data, FUN = mean)
+```
+
+### Multilevel Model (Partial Pooling)
+
+We can fit the multilevel model using the lmer() function from the *lme4* package. Notice how hierchy is specified using *" | segment_id"*.
+
+```{r}
+# multilevel model
+multilevel_model <- lmer(engagement ~ treatment + (1 + treatment | segment_id), 
+                         data = ab_test_data)
+summary(multilevel_model)
+```
+
+Once the model is fit, we can see the fixed effect, which shows the parameters that apply to all observations. 
+```{r}
+fixed_effects <- fixef(multilevel_model)
+print(fixed_effects)
+```
+
+And the random effects, which are the deviations from the overall treatment effect. 
+```{r}
+random_effects <- ranef(multilevel_model)$segment_id
+print(random_effects)
+```
+
+Applying one on the other, we can obtain the segment-specific treatment effects. 
+```{r}
+# Calculate segment-specific treatment effects
+segment_specific_effects <- data.frame(
+  segment_id = levels(ab_test_data$segment_id),
+  effect = fixed_effects["treatmentTreatment"] + random_effects[,"treatmentTreatment"]
+)
+print(segment_specific_effects)
+```
+
+Finally, by combining the outputs from the simple model and the multilevel model & comparing it with the <abbr title="which we know since we manually plugged them in">true effect</abbr>, we can compare the performance of the modeling methods. 
+
+<details><summary>click here for ggplot code</summary>
+```{r}
+# save true effects for each segment for comparison
+true_effects <- data.frame(
+  segment_id = factor(1:n_segments),
+  true_effect = segment_treatment_effects,
+  percent_change = (segment_treatment_effects / overall_intercept) * 100
+)
+
+# calculate and save segment-specific treatment effects from multilevel model
+ml_segment_effects <- data.frame(
+  segment_id = factor(1:n_segments),
+  effect = fixed_effects[2] + random_effects[,"treatmentTreatment"],
+  percent_change = ((fixed_effects[2] + random_effects[,"treatmentTreatment"]) / overall_intercept) * 100
+)
+
+# combine true and estimated effects
+comparison_data <- merge(true_effects, ml_segment_effects, 
+                         by = "segment_id", 
+                         suffixes = c("_true", "_estimated"))
+# add the simple model effect
+
+comparison_data$effect_simple <- coef(simple_model)[2]
+comparison_data$percent_simple <- (coef(simple_model)[2] / overall_intercept) * 100
+
+effect_comp <- ggplot(comparison_data, aes(x = segment_id)) +
+  geom_point(aes(y = percent_change_true, fill = "True Effect"), 
+           stat = "identity", alpha = 0.7) +
+  geom_bar(aes(y = percent_change_estimated, fill = "Multilevel Model"), 
+           stat = "identity", alpha = 0.7) +
+  geom_hline(aes(yintercept = percent_simple, color = "Simple Model"),
+             linetype = "dashed", linewidth = 1.5) +
+  geom_hline(yintercept = 0, color = "black") +
+  labs(title = "Treatment Effect by User Segment",
+       subtitle = "Simple model vs Multilevel model vs True effect",
+       x = "User Segment",
+       y = "Percent Change in Engagement",
+       fill = "Model Type", 
+       color = "Model Type") +
+  scale_fill_manual(values = c("True Effect" = "#1b9e77", "Multilevel Model" = "#7570b3")) +
+  scale_color_manual(values = c("Simple Model" = "#d95f02")) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+</details>
+
+```{r, echo=FALSE}
+effect_comp
+```
+
+## Quick Conclusion
+
+In our example, while the overall treatment effect was positive, the multilevel model reveals that the treatment had varying impact based on user segments. Like so, by accounting for multilevel structure in our data, we gain crucial insights that would be missed with simpler approaches. 
+
+Connecting the significance of our research to our product partners, this would mean reconsidering a blanket rollout and instead creating a targeted implementation strategy that considers the segments that we have created. 
+
+Multilevel modeling isn't just a statistical technique. It's a way of thinking about variation and heterogeneity in your data that can lead to more nuanced insights and better decision-making. If nothing else, remember this: average effects can hide important variation. When your data has a natural grouping structure, consider the multilevel approach to uncover the full story behind your numbers.
