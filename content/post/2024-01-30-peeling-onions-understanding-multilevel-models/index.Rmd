@@ -290,3 +290,7 @@ Connecting the significance of our research to our product partners, this would 
 Multilevel modeling isn't just a statistical technique. It's a way of thinking about variation and heterogeneity in your data that can lead to more nuanced insights and better decision-making. If nothing else, remember this: average effects can hide important variation. When your data has a natural grouping structure, consider the multilevel approach to uncover the full story behind your numbers.
 
 ## References
+
+Aguinis, H., Gottfredson, R. K., & Culpepper, S. A. (2013). Best-Practice Recommendations for Estimating Cross-Level Interaction Effects Using Multilevel Modeling. Journal of Management, 39(6), 1490-1528. https://doi.org/10.1177/0149206313478188 (Original work published 2013)
+
+Lee, E., & Hong, S. (2021). Adequate Sample Sizes for a Three-Level Growth Model. Frontiers in psychology, 12, 685496. https://doi.org/10.3389/fpsyg.2021.685496
