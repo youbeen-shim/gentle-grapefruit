@@ -1,5 +1,5 @@
 ---
-title: 'When Time Matters: Survival Anaalysis'
+title: 'When Time Matters: Survival Analysis'
 author: Youbeen Shim
 date: '2025-03-05'
 slug: when-time-matters-survival-anaalysis
@@ -7,7 +7,7 @@ categories: []
 tags: []
 ---
 
-Imagine. You are working at Candy Emporium, a subscription business that delivers sweets to customers monthly. A key risk in your business is customer churn - losing your valuable customers. Some customers have been with your company for years, others for just weeks. Some have already canceled, while others are still active. How do you make sense of this messy, incomplete picture to predict who might leave next? Perhaps, you could even understand what expensive mistakes you are making that are costing you customers. 
+Imagine. You are working at Candy Crus... aders, a subscription business that delivers sweets to customers monthly. A key risk in your business is customer churn - losing your valuable customers. Some customers have been with your company for years, others for just weeks. Some have already canceled, while others are still active. How do you make sense of this messy, incomplete picture to predict who might leave next? You could even understand what expensive mistakes you are making that are costing you customers. 
 Having dipped my toes in both academia and industry, I frequently notice how survival analysis remains underutilized despite its practical value. Many data scientists are quick to reach for regression or classification techniques, but when time itself becomes a critical factor in your analysis, survival methods provide insights that other approaches simply cannot. 
 
 Today, we will cover the three most common approaches in survival analysis, namely: Kaplan-Meier method, log rank test, and Cox’s proportional-hazards model.

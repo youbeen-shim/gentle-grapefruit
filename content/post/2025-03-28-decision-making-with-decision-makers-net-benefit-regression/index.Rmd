@@ -1,0 +1,542 @@
+---
+title: 'Decision Making with Decision Makers: Net Benefit Regression'
+author: Youbeen Shim
+date: '2025-03-28'
+slug: decision-making-with-decision-makers-net-benefit-regression
+categories: []
+tags: []
+---
+
+
+dataframe generation for replication
+```{r, message=FALSE, error=FALSE}
+# Net Benefit Regression Implementation for Colorectal Cancer Screening
+# This script demonstrates how to implement both traditional ICER analysis
+# and Net Benefit Regression framework in R for economic evaluations
+
+# Libraries needed for analysis
+library(boot)       # For bootstrapping
+library(ggplot2)    # For creating plots
+library(dplyr)      # For data manipulation
+library(sandwich)   # For robust standard errors
+library(lmtest)     # For coeftest with robust SE
+
+# Assuming we have a dataframe called 'crc_data' with the following variables:
+# - id: Patient identifier
+# - treatment: 1 for enhanced screening, 0 for standard screening
+# - age_group: Categorical variable for age groups (65-70, 71-75, 76-80, 81+)
+# - qalys: Quality-adjusted life years for each patient
+# - costs: Total costs in Korean Won (₩)
+# - family_history: 1 if family history of CRC, 0 otherwise
+# - prior_polyps: 1 if history of polyps, 0 otherwise
+# - gender: 1 for female, 0 for male
+# - urban: 1 for urban residence, 0 for rural
+# - prior_screening: 1 if previously screened, 0 otherwise
+
+# Set the working directory and load the data (in practice)
+# setwd("your/working/directory")
+# crc_data <- read.csv("crc_screening_data.csv")
+
+# Let's create simulated data for demonstration
+set.seed(123)
+n <- 1000 # Sample size
+
+# Create simulated dataset
+crc_data <- data.frame(
+  id = 1:n,
+  treatment = rbinom(n, 1, 0.5),
+  age_group = sample(c("65-70", "71-75", "76-80", "81+"), n, replace = TRUE, 
+                    prob = c(0.4, 0.3, 0.2, 0.1)),
+  family_history = rbinom(n, 1, 0.2),
+  prior_polyps = rbinom(n, 1, 0.15),
+  gender = rbinom(n, 1, 0.55),
+  urban = rbinom(n, 1, 0.7),
+  prior_screening = rbinom(n, 1, 0.6)
+)
+
+# Convert age_group to factor and set reference level
+crc_data$age_group <- factor(crc_data$age_group, 
+                           levels = c("81+", "76-80", "71-75", "65-70"))
+
+# Generate effectiveness (QALYs) based on treatment and covariates
+# Note: These coefficients are hypothetical and would be derived from real data
+crc_data$qalys <- 3 + 
+                0.2 * crc_data$treatment + 
+                0.8 * (crc_data$age_group == "65-70") + 
+                0.5 * (crc_data$age_group == "71-75") + 
+                0.2 * (crc_data$age_group == "76-80") +
+                0.3 * (crc_data$treatment * (crc_data$age_group == "65-70")) +
+                0.2 * (crc_data$treatment * (crc_data$age_group == "71-75")) +
+                0.05 * (crc_data$treatment * (crc_data$age_group == "76-80")) +
+                0.3 * crc_data$family_history +
+                0.25 * crc_data$prior_polyps +
+                0.1 * crc_data$gender +
+                0.05 * crc_data$urban +
+                0.15 * crc_data$prior_screening +
+                rnorm(n, 0, 0.5)  # Random error term
+
+# Generate costs (in ₩10,000 units to keep numbers manageable)
+crc_data$costs <- 500 + 
+                100 * crc_data$treatment + 
+                (-150) * (crc_data$age_group == "65-70") +
+                (-100) * (crc_data$age_group == "71-75") +
+                (-50) * (crc_data$age_group == "76-80") +
+                (-120) * (crc_data$treatment * (crc_data$age_group == "65-70")) +
+                (-80) * (crc_data$treatment * (crc_data$age_group == "71-75")) +
+                30 * (crc_data$treatment * (crc_data$age_group == "76-80")) +
+                50 * crc_data$family_history +
+                70 * crc_data$prior_polyps +
+                20 * crc_data$gender +
+                (-10) * crc_data$urban +
+                (-30) * crc_data$prior_screening +
+                rnorm(n, 0, 100)  # Random error term
+
+# Convert costs to ₩ by multiplying by 10,000
+crc_data$costs <- crc_data$costs * 10000
+
+# For readability in results
+options(scipen = 999)
+```
+```{r, echo=FALSE}
+head(crc_data)
+```
+
+ICER
+```{r}
+#------------------------------------------------------------------------------#
+#                   PART 1: TRADITIONAL ICER ANALYSIS                          #
+#                  (The Traditional Approach with ICER)                        #
+#------------------------------------------------------------------------------#
+
+# Calculate mean costs and QALYs for each treatment group
+icer_summary <- crc_data %>%
+  group_by(treatment) %>%
+  summarize(
+    mean_cost = mean(costs),
+    mean_qaly = mean(qalys),
+    n = n()
+  )
+
+# Print summary
+print(icer_summary)
+
+# Calculate ICER
+control_cost <- icer_summary$mean_cost[icer_summary$treatment == 0]
+intervention_cost <- icer_summary$mean_cost[icer_summary$treatment == 1]
+control_qaly <- icer_summary$mean_qaly[icer_summary$treatment == 0]
+intervention_qaly <- icer_summary$mean_qaly[icer_summary$treatment == 1]
+
+delta_cost <- intervention_cost - control_cost
+delta_qaly <- intervention_qaly - control_qaly
+icer <- delta_cost / delta_qaly
+
+cat("ICER: ₩", format(icer, big.mark = ","), " per QALY\n")
+
+# Now, let's implement a bootstrap to estimate ICER confidence intervals
+# This addresses Problem 2 from our blog post: Incompleteness in Capturing Uncertainty
+
+# Function to calculate ICER from a bootstrap sample
+icer_function <- function(data, indices) {
+  d <- data[indices, ]
+  
+  # Calculate mean costs and QALYs by treatment group
+  treat_means <- aggregate(cbind(costs, qalys) ~ treatment, data = d, FUN = mean)
+  
+  # Calculate incremental cost and QALY
+  delta_c <- treat_means$costs[treat_means$treatment == 1] - 
+             treat_means$costs[treat_means$treatment == 0]
+  delta_e <- treat_means$qalys[treat_means$treatment == 1] - 
+             treat_means$qalys[treat_means$treatment == 0]
+  
+  # Return ICER
+  return(delta_c / delta_e)
+}
+
+# Run bootstrap with 1000 replications
+set.seed(456)
+icer_boot <- boot(data = crc_data, statistic = icer_function, R = 1000)
+
+# Calculate bootstrap confidence interval
+icer_ci <- boot.ci(icer_boot, type = "perc", conf = 0.95)
+
+cat("ICER 95% CI: ₩", format(icer_ci$percent[4], big.mark = ","), 
+    " to ₩", format(icer_ci$percent[5], big.mark = ","), " per QALY\n")
+
+# Let's examine the bootstrap results to see if we have issues with quadrant crossing
+# This shows Problem 3: Statistical Testing and Decision-Making Challenges
+bootstrap_results <- data.frame(
+  delta_cost = numeric(1000),
+  delta_qaly = numeric(1000),
+  icer = numeric(1000)
+)
+
+for (i in 1:1000) {
+  # Resample with replacement
+  boot_indices <- sample(1:nrow(crc_data), nrow(crc_data), replace = TRUE)
+  boot_sample <- crc_data[boot_indices, ]
+  
+  # Calculate mean costs and QALYs by treatment group
+  boot_means <- aggregate(cbind(costs, qalys) ~ treatment, data = boot_sample, FUN = mean)
+  
+  # Store incremental cost, QALY, and ICER
+  bootstrap_results$delta_cost[i] <- boot_means$costs[boot_means$treatment == 1] - 
+                                    boot_means$costs[boot_means$treatment == 0]
+  bootstrap_results$delta_qaly[i] <- boot_means$qalys[boot_means$treatment == 1] - 
+                                    boot_means$qalys[boot_means$treatment == 0]
+  bootstrap_results$icer[i] <- bootstrap_results$delta_cost[i] / bootstrap_results$delta_qaly[i]
+}
+
+# Check which quadrants the bootstrap results fall into
+# This demonstrates Problem 1: Difficulty Handling Negative and Zero ICER Values
+quadrants <- rep(NA, 1000)
+quadrants[bootstrap_results$delta_cost > 0 & bootstrap_results$delta_qaly > 0] <- "I: More Costly, More Effective"
+quadrants[bootstrap_results$delta_cost > 0 & bootstrap_results$delta_qaly < 0] <- "II: More Costly, Less Effective"
+quadrants[bootstrap_results$delta_cost < 0 & bootstrap_results$delta_qaly < 0] <- "III: Less Costly, Less Effective"
+quadrants[bootstrap_results$delta_cost < 0 & bootstrap_results$delta_qaly > 0] <- "IV: Less Costly, More Effective"
+
+# Summarize quadrant distribution
+quadrant_table <- table(quadrants)
+print(quadrant_table)
+print(prop.table(quadrant_table))
+
+# Plot the cost-effectiveness plane
+ggplot(bootstrap_results, aes(x = delta_qaly, y = delta_cost)) +
+  geom_point(alpha = 0.3) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  labs(
+    title = "Cost-Effectiveness Plane",
+    x = "Incremental Effectiveness (QALYs)",
+    y = "Incremental Cost (₩)",
+    caption = "Each point represents one bootstrap sample"
+  ) +
+  theme_minimal()
+
+```
+
+net benefit regression
+```{r}
+
+#------------------------------------------------------------------------------#
+#                 PART 2: NET BENEFIT REGRESSION FRAMEWORK                     #
+#              (Net Benefit Regression: A More Robust Alternative)             #
+#------------------------------------------------------------------------------#
+
+# Step 2: Compute Costs and Effectiveness Metrics
+# Define willingness-to-pay (WTP) threshold (₩ per QALY)
+wtp <- 50000000  # ₩50 million per QALY
+
+# Calculate net benefit for each individual
+crc_data$net_benefit <- wtp * crc_data$qalys - crc_data$costs
+
+# Step 3: Construct Regression Model
+# Create dummy variables for age groups and interaction terms
+crc_data$age_65_70 <- as.numeric(crc_data$age_group == "65-70")
+crc_data$age_71_75 <- as.numeric(crc_data$age_group == "71-75")
+crc_data$age_76_80 <- as.numeric(crc_data$age_group == "76-80")
+crc_data$tx_age_65_70 <- crc_data$treatment * crc_data$age_65_70
+crc_data$tx_age_71_75 <- crc_data$treatment * crc_data$age_71_75
+crc_data$tx_age_76_80 <- crc_data$treatment * crc_data$age_76_80
+
+# Step 4: Perform Regression Analysis
+# Run net benefit regression
+nb_model <- lm(net_benefit ~ treatment + age_65_70 + age_71_75 + age_76_80 +
+                tx_age_65_70 + tx_age_71_75 + tx_age_76_80 +
+                family_history + prior_polyps + gender + urban + prior_screening,
+               data = crc_data)
+
+# Display regression results with robust standard errors
+nb_robust <- coeftest(nb_model, vcov = vcovHC(nb_model, type = "HC1"))
+print(nb_robust)
+
+# Step 5: Interpret Results and Policy Implications
+# Extract key coefficients and confidence intervals
+treatment_coef <- coef(nb_robust)["treatment"]
+treatment_ci <- confint(nb_model, "treatment")
+treatment_pvalue <- nb_robust["treatment", "Pr(>|t|)"]
+
+cat("Net Benefit of Treatment: ₩", format(treatment_coef, big.mark = ","),
+    "\n95% CI: (₩", format(treatment_ci[1], big.mark = ","), 
+    ", ₩", format(treatment_ci[2], big.mark = ","), ")",
+    "\np-value:", treatment_pvalue, "\n")
+
+# Calculate age-specific effects
+age_65_70_effect <- treatment_coef + coef(nb_robust)["tx_age_65_70"]
+age_71_75_effect <- treatment_coef + coef(nb_robust)["tx_age_71_75"]
+age_76_80_effect <- treatment_coef + coef(nb_robust)["tx_age_76_80"]
+age_81plus_effect <- treatment_coef  # Reference group
+
+cat("Age-specific treatment effects:\n",
+    "Ages 65-70: ₩", format(age_65_70_effect, big.mark = ","), "\n",
+    "Ages 71-75: ₩", format(age_71_75_effect, big.mark = ","), "\n",
+    "Ages 76-80: ₩", format(age_76_80_effect, big.mark = ","), "\n",
+    "Ages 81+: ₩", format(age_81plus_effect, big.mark = ","), "\n")
+```
+
+monte carlo
+```{r}
+#------------------------------------------------------------------------------#
+#            PART 3: ADDRESSING UNCERTAINTY IN NBR (STEP 6)                    #
+#------------------------------------------------------------------------------#
+
+# Bootstrap approach to uncertainty estimation
+nb_boot_function <- function(data, indices) {
+  d <- data[indices, ]
+  
+  # Run regression on bootstrap sample
+  boot_model <- lm(net_benefit ~ treatment + age_65_70 + age_71_75 + age_76_80 +
+                  tx_age_65_70 + tx_age_71_75 + tx_age_76_80 +
+                  family_history + prior_polyps + gender + urban + prior_screening,
+                 data = d)
+  
+  # Return coefficients of interest
+  return(coef(boot_model)[c("treatment", "tx_age_65_70", "tx_age_71_75", "tx_age_76_80")])
+}
+
+# Run bootstrap with 1000 replications
+set.seed(789)
+nb_boot <- boot(data = crc_data, statistic = nb_boot_function, R = 1000)
+
+# Calculate bootstrap confidence intervals for treatment effect
+treatment_boot_ci <- boot.ci(nb_boot, type = "perc", index = 1)
+cat("Bootstrap 95% CI for treatment effect: ₩", 
+    format(treatment_boot_ci$percent[4], big.mark = ","),
+    " to ₩", format(treatment_boot_ci$percent[5], big.mark = ","), "\n")
+
+# Calculate confidence intervals for age-specific effects
+# For ages 65-70 (treatment + tx_age_65_70)
+age_65_70_samples <- nb_boot$t[, 1] + nb_boot$t[, 2]
+age_65_70_ci <- quantile(age_65_70_samples, c(0.025, 0.975))
+cat("Bootstrap 95% CI for ages 65-70: ₩", 
+    format(age_65_70_ci[1], big.mark = ","),
+    " to ₩", format(age_65_70_ci[2], big.mark = ","), "\n")
+
+# For ages 71-75 (treatment + tx_age_71_75)
+age_71_75_samples <- nb_boot$t[, 1] + nb_boot$t[, 3]
+age_71_75_ci <- quantile(age_71_75_samples, c(0.025, 0.975))
+cat("Bootstrap 95% CI for ages 71-75: ₩", 
+    format(age_71_75_ci[1], big.mark = ","),
+    " to ₩", format(age_71_75_ci[2], big.mark = ","), "\n")
+
+# For ages 76-80 (treatment + tx_age_76_80)
+age_76_80_samples <- nb_boot$t[, 1] + nb_boot$t[, 4]
+age_76_80_ci <- quantile(age_76_80_samples, c(0.025, 0.975))
+cat("Bootstrap 95% CI for ages 76-80: ₩", 
+    format(age_76_80_ci[1], big.mark = ","),
+    " to ₩", format(age_76_80_ci[2], big.mark = ","), "\n")
+
+# For ages 81+ (just treatment)
+age_81plus_ci <- quantile(nb_boot$t[, 1], c(0.025, 0.975))
+cat("Bootstrap 95% CI for ages 81+: ₩", 
+    format(age_81plus_ci[1], big.mark = ","),
+    " to ₩", format(age_81plus_ci[2], big.mark = ","), "\n")
+
+# Monte Carlo simulation for decision risk quantification
+# Calculate probability that the intervention is cost-effective
+prob_cost_effective <- mean(nb_boot$t[, 1] > 0)
+cat("Probability that enhanced screening is cost-effective (all ages): ", 
+    round(prob_cost_effective * 100, 1), "%\n")
+
+# Calculate age-specific probabilities
+prob_65_70 <- mean(age_65_70_samples > 0)
+prob_71_75 <- mean(age_71_75_samples > 0)
+prob_76_80 <- mean(age_76_80_samples > 0)
+prob_81plus <- mean(nb_boot$t[, 1] > 0)
+
+cat("Probability of cost-effectiveness by age group:\n",
+    "Ages 65-70: ", round(prob_65_70 * 100, 1), "%\n",
+    "Ages 71-75: ", round(prob_71_75 * 100, 1), "%\n",
+    "Ages 76-80: ", round(prob_76_80 * 100, 1), "%\n",
+    "Ages 81+: ", round(prob_81plus * 100, 1), "%\n")
+
+# Demonstrate WTP dependence by running the regression at different thresholds
+wtp_values <- seq(from = 10000000, to = 100000000, by = 10000000)  # ₩10M to ₩100M
+wtp_results <- data.frame(
+  wtp = wtp_values,
+  treatment_effect = numeric(length(wtp_values)),
+  p_value = numeric(length(wtp_values))
+)
+
+for (i in 1:length(wtp_values)) {
+  # Calculate net benefit with this WTP
+  crc_data$nb_temp <- wtp_values[i] * crc_data$qalys - crc_data$costs
+  
+  # Run regression
+  nb_model_temp <- lm(nb_temp ~ treatment + age_65_70 + age_71_75 + age_76_80 +
+                      tx_age_65_70 + tx_age_71_75 + tx_age_76_80 +
+                      family_history + prior_polyps + gender + urban + prior_screening,
+                     data = crc_data)
+  
+  # Extract results
+  nb_results_temp <- coeftest(nb_model_temp, vcov = vcovHC(nb_model_temp, type = "HC1"))
+  wtp_results$treatment_effect[i] <- coef(nb_results_temp)["treatment"]
+  wtp_results$p_value[i] <- nb_results_temp["treatment", "Pr(>|t|)"]
+}
+
+# View the WTP dependence results
+print(wtp_results)
+
+# Create a plot of treatment effect vs. WTP
+ggplot(wtp_results, aes(x = wtp/1000000, y = treatment_effect/1000000)) +
+  geom_line() +
+  geom_point() +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
+  labs(
+    title = "Treatment Effect by Willingness-to-Pay Threshold",
+    x = "WTP (Million ₩ per QALY)",
+    y = "Net Benefit (Million ₩)",
+    caption = "Positive values indicate cost-effectiveness"
+  ) +
+  theme_minimal()
+```
+
+CEAC
+```{r}
+
+#------------------------------------------------------------------------------#
+#            PART 4: COST-EFFECTIVENESS ACCEPTABILITY CURVES (STEP 7)          #
+#------------------------------------------------------------------------------#
+
+# Generate CEAC for the overall population
+ceac_wtp <- seq(from = 0, to = 100000000, by = 5000000)  # ₩0 to ₩100M
+ceac_prob <- numeric(length(ceac_wtp))
+
+# For each WTP, calculate probability of cost-effectiveness
+for (i in 1:length(ceac_wtp)) {
+  # Calculate individual net benefits at this WTP
+  nb_i <- ceac_wtp[i] * crc_data$qalys - crc_data$costs
+  
+  # Run bootstrap at this WTP
+  ceac_boot_function <- function(data, indices, wtp_val) {
+    d <- data[indices, ]
+    nb_d <- wtp_val * d$qalys - d$costs
+    
+    # Run simple regression (just treatment effect)
+    boot_model <- lm(nb_d ~ treatment, data = d)
+    
+    # Return treatment coefficient
+    return(coef(boot_model)["treatment"])
+  }
+  
+  # Run 200 bootstrap iterations (fewer for computational efficiency in this example)
+  ceac_boot <- boot(data = crc_data, 
+                   statistic = ceac_boot_function, 
+                   R = 200, 
+                   wtp_val = ceac_wtp[i])
+  
+  # Calculate probability of positive net benefit
+  ceac_prob[i] <- mean(ceac_boot$t > 0)
+}
+
+# Create CEAC dataframe
+ceac_data <- data.frame(
+  wtp = ceac_wtp / 1000000,  # Convert to millions for readability
+  probability = ceac_prob
+)
+
+# Plot the CEAC
+ggplot(ceac_data, aes(x = wtp, y = probability)) +
+  geom_line() +
+  geom_point() +
+  geom_hline(yintercept = 0.5, linetype = "dashed", color = "red") +
+  geom_vline(xintercept = 50, linetype = "dashed", color = "blue") +  # ₩50M threshold
+  scale_y_continuous(limits = c(0, 1), labels = scales::percent) +
+  labs(
+    title = "Cost-Effectiveness Acceptability Curve",
+    subtitle = "Probability that Enhanced Screening is Cost-Effective",
+    x = "Willingness-to-Pay (Million ₩ per QALY)",
+    y = "Probability of Cost-Effectiveness",
+    caption = "Red line indicates 50% probability; Blue line indicates ₩50M WTP threshold"
+  ) +
+  theme_minimal()
+
+# Generate age-stratified CEACs
+# We'll use a more efficient approach for demonstration
+age_groups <- c("65-70", "71-75", "76-80", "81+")
+wtp_points <- c(10, 20, 30, 40, 50, 60, 70, 80, 90, 100)  # Million ₩
+ceac_age_data <- expand.grid(
+  age_group = age_groups,
+  wtp = wtp_points
+)
+ceac_age_data$probability <- NA
+
+# For each age group and WTP, calculate probability
+for (i in 1:nrow(ceac_age_data)) {
+  age <- ceac_age_data$age_group[i]
+  wtp <- ceac_age_data$wtp[i] * 1000000  # Convert to ₩
+  
+  # Subset data for this age group
+  age_data <- crc_data[crc_data$age_group == age, ]
+  
+  # Calculate individual net benefits at this WTP
+  nb_i <- wtp * age_data$qalys - age_data$costs
+  
+  # Run bootstrap at this WTP
+  ceac_age_boot_function <- function(data, indices) {
+    d <- data[indices, ]
+    
+    # Calculate mean net benefits by treatment group
+    treat_means <- aggregate(nb_i ~ treatment, data = d, FUN = mean)
+    
+    # Return difference (treatment effect)
+    if (nrow(treat_means) < 2) return(NA)  # Handle potential issues
+    return(treat_means$nb_i[treat_means$treatment == 1] - 
+           treat_means$nb_i[treat_means$treatment == 0])
+  }
+  
+  # Run 100 bootstrap iterations (fewer for computational efficiency)
+  ceac_age_boot <- boot(data = age_data, 
+                      statistic = ceac_age_boot_function, 
+                      R = 100)
+  
+  # Calculate probability of positive net benefit
+  ceac_age_data$probability[i] <- mean(ceac_age_boot$t > 0, na.rm = TRUE)
+}
+
+# Plot the age-stratified CEACs
+ggplot(ceac_age_data, aes(x = wtp, y = probability, color = age_group)) +
+  geom_line() +
+  geom_point() +
+  geom_hline(yintercept = 0.5, linetype = "dashed", color = "black") +
+  geom_vline(xintercept = 50, linetype = "dashed", color = "blue") +  # ₩50M threshold
+  scale_y_continuous(limits = c(0, 1), labels = scales::percent) +
+  scale_color_brewer(palette = "Set1", name = "Age Group") +
+  labs(
+    title = "Age-Stratified Cost-Effectiveness Acceptability Curves",
+    subtitle = "Probability that Enhanced Screening is Cost-Effective by Age Group",
+    x = "Willingness-to-Pay (Million ₩ per QALY)",
+    y = "Probability of Cost-Effectiveness",
+    caption = "Horizontal line indicates 50% probability; Vertical line indicates ₩50M WTP threshold"
+  ) +
+  theme_minimal()
+
+# Final consolidated analysis of cost-effectiveness by age group at ₩50M WTP threshold
+final_results <- data.frame(
+  age_group = age_groups,
+  net_benefit = c(age_65_70_effect, age_71_75_effect, age_76_80_effect, age_81plus_effect),
+  probability = c(prob_65_70, prob_71_75, prob_76_80, prob_81plus),
+  recommendation = NA
+)
+
+# Add recommendations based on probability thresholds
+final_results$recommendation[final_results$probability >= 0.8] <- "Strongly Recommended"
+final_results$recommendation[final_results$probability >= 0.6 & final_results$probability < 0.8] <- "Recommended"
+final_results$recommendation[final_results$probability >= 0.4 & final_results$probability < 0.6] <- "Consider with Monitoring"
+final_results$recommendation[final_results$probability < 0.4] <- "Not Recommended"
+
+# Display final policy recommendations
+print(final_results)
+
+# Create a simplified dashboard output for policymakers
+cat("\n===== POLICY RECOMMENDATIONS FOR COLORECTAL CANCER SCREENING PROGRAM =====\n")
+cat("Analysis based on Net Benefit Regression at ₩50M WTP threshold\n\n")
+
+for (i in 1:nrow(final_results)) {
+  cat("Age Group:", final_results$age_group[i], "\n")
+  cat("Net Monetary Benefit: ₩", format(final_results$net_benefit[i], big.mark = ","), "\n")
+  cat("Probability of Cost-Effectiveness:", round(final_results$probability[i] * 100), "%\n")
+  cat("Recommendation:", final_results$recommendation[i], "\n")
+  cat("-------------------------------------------------------------\n")
+}
+```
+
