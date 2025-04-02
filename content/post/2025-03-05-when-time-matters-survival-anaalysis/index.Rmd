@@ -2,7 +2,7 @@
 title: 'When Time Matters: Survival Analysis'
 author: Youbeen Shim
 date: '2025-03-05'
-slug: when-time-matters-survival-anaalysis
+slug: when-time-matters-survival-analysis
 categories: []
 tags: []
 ---
